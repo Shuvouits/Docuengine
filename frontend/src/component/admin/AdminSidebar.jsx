@@ -1,33 +1,62 @@
-import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 import {
     LayoutDashboard,
     Building2,
-    Users,
     Settings,
-    ShieldCheck,
     LogOut,
     X,
     Palette,
-    SlidersHorizontal,
     Flag,
-    UserCircle,
-    ChevronDown,
-    ChevronsUpDown,
+    Languages,
+    Clock3,
 } from "lucide-react";
 
 function AdminSidebar({
     mobileOpen = false,
     onClose = () => {},
+    authData = null,
+    authLoading = false,
 }) {
     const navigate = useNavigate();
 
-    const [workspaceOpen, setWorkspaceOpen] = useState(false);
+    /*
+    |--------------------------------------------------------------------------
+    | Auth Data
+    |--------------------------------------------------------------------------
+    */
+
+    const user = authData?.user || null;
+
+    const currentTenant =
+        authData?.current_tenant || null;
+
+    const isPlatformOwner =
+        Boolean(user?.is_platform_owner);
+
+    const branding =
+        currentTenant?.branding || null;
+
+    const organizationName =
+        branding?.display_name ||
+        currentTenant?.name ||
+        "Organization";
+
+    const organizationLogo =
+        branding?.logo_url || null;
+
+    const tenantStatus =
+        currentTenant?.status || null;
+
+    const tenantTimezone =
+        currentTenant?.timezone || null;
+
+    const tenantRole =
+        currentTenant?.membership?.role || null;
 
     /*
     |--------------------------------------------------------------------------
-    | Navigation
+    | Platform Navigation
     |--------------------------------------------------------------------------
     */
 
@@ -37,61 +66,61 @@ function AdminSidebar({
             path: "/admin/dashboard",
             icon: LayoutDashboard,
         },
-        {
-            label: "Tenants",
-            path: "/admin/tenants",
-            icon: Building2,
-        },
-        {
-            label: "Users",
-            path: "/admin/users",
-            icon: Users,
-        },
+
+        ...(isPlatformOwner
+            ? [
+                  {
+                      label: "MSP Organizations",
+                      path: "/admin/tenants",
+                      icon: Building2,
+                  },
+              ]
+            : []),
     ];
 
-    const organizationItems = [
-        {
-            label: "Overview",
-            path: "/admin/organization",
-            icon: Building2,
-        },
-        {
-            label: "Settings",
-            path: "/admin/organization/settings",
-            icon: Settings,
-        },
-        {
-            label: "Branding",
-            path: "/admin/organization/branding",
-            icon: Palette,
-        },
-    ];
+    /*
+    |--------------------------------------------------------------------------
+    | Organization Navigation
+    |--------------------------------------------------------------------------
+    |
+    | These routes will be connected one by one with Module 1 APIs.
+    |
+    */
 
-    const systemItems = [
-        {
-            label: "Configuration",
-            path: "/admin/configuration",
-            icon: SlidersHorizontal,
-        },
-        {
-            label: "Feature Flags",
-            path: "/admin/feature-flags",
-            icon: Flag,
-        },
-    ];
-
-    const accountItems = [
-        {
-            label: "My Profile",
-            path: "/admin/profile",
-            icon: UserCircle,
-        },
-        {
-            label: "Security",
-            path: "/admin/security",
-            icon: ShieldCheck,
-        },
-    ];
+    const organizationItems = currentTenant
+        ? [
+              {
+                  label: "Overview",
+                  path: "/admin/organization",
+                  icon: Building2,
+              },
+              {
+                  label: "General Settings",
+                  path: "/admin/organization/settings",
+                  icon: Settings,
+              },
+              {
+                  label: "Branding",
+                  path: "/admin/organization/branding",
+                  icon: Palette,
+              },
+              {
+                  label: "Regional Settings",
+                  path: "/admin/organization/regional",
+                  icon: Clock3,
+              },
+              {
+                  label: "Terminology",
+                  path: "/admin/organization/terminology",
+                  icon: Languages,
+              },
+              {
+                  label: "Feature Flags",
+                  path: "/admin/organization/feature-flags",
+                  icon: Flag,
+              },
+          ]
+        : [];
 
     /*
     |--------------------------------------------------------------------------
@@ -101,7 +130,6 @@ function AdminSidebar({
 
     const handleLogout = () => {
         localStorage.removeItem("token");
-        localStorage.removeItem("user");
 
         onClose();
 
@@ -144,7 +172,8 @@ function AdminSidebar({
                             size={19}
                             strokeWidth={1.8}
                             className={`
-                                shrink-0 transition-colors duration-200
+                                shrink-0
+                                transition-colors duration-200
 
                                 ${
                                     isActive
@@ -174,8 +203,13 @@ function AdminSidebar({
     */
 
     const renderSection = (title, items) => {
+        if (!items.length) {
+            return null;
+        }
+
         return (
             <div className="mb-6">
+
                 <div className="px-4 pb-2">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                         {title}
@@ -232,21 +266,20 @@ function AdminSidebar({
                 <div className="flex h-[82px] shrink-0 items-center justify-between border-b border-white/10 px-6">
 
                     <NavLink
-                        to="/"
+                        to="/admin/dashboard"
                         onClick={onClose}
                         className="group flex items-center gap-3"
                     >
-                        {/* Logo Icon */}
 
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#19b5fe] to-[#7c3aed] shadow-lg shadow-[#19b5fe]/20 transition-transform duration-300 group-hover:scale-105">
+
                             <span className="text-xl font-bold text-white">
                                 D
                             </span>
                         </div>
 
-                        {/* Brand */}
-
                         <div>
+
                             <h1 className="text-[21px] font-bold tracking-tight text-white">
                                 Docu
                                 <span className="text-[#19b5fe]">
@@ -259,8 +292,6 @@ function AdminSidebar({
                             </p>
                         </div>
                     </NavLink>
-
-                    {/* Mobile Close */}
 
                     <button
                         type="button"
@@ -276,7 +307,7 @@ function AdminSidebar({
                     NAVIGATION
                 ====================================================== */}
 
-                <div className="flex-1 overflow-y-auto px-4 py-6 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+                <div className="flex-1 overflow-y-auto px-4 py-6">
 
                     {renderSection(
                         "Platform",
@@ -288,130 +319,185 @@ function AdminSidebar({
                         organizationItems
                     )}
 
-                    {renderSection(
-                        "System",
-                        systemItems
-                    )}
-
-                    {renderSection(
-                        "Account",
-                        accountItems
-                    )}
                 </div>
 
                 {/* =====================================================
-                    CURRENT WORKSPACE
+                    CURRENT ORGANIZATION
                 ====================================================== */}
 
                 <div className="shrink-0 px-4 pb-4">
 
-                    <button
-                        type="button"
-                        onClick={() =>
-                            setWorkspaceOpen(!workspaceOpen)
-                        }
-                        className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition hover:border-white/15 hover:bg-white/[0.05]"
-                    >
-                        <div className="flex items-center gap-3">
+                    {authLoading ? (
 
-                            {/* Workspace Icon */}
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
 
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#19b5fe] to-[#7c3aed]">
-                                <Building2
-                                    size={17}
-                                    strokeWidth={1.8}
-                                    className="text-white"
-                                />
-                            </div>
+                            <div className="animate-pulse">
 
-                            {/* Workspace Info */}
+                                <div className="flex items-center gap-3">
 
-                            <div className="min-w-0 flex-1">
+                                    <div className="h-10 w-10 rounded-xl bg-white/10" />
 
-                                <p className="truncate text-xs font-semibold text-white">
-                                    Acme Corporation
-                                </p>
+                                    <div className="flex-1">
 
-                                <p className="mt-0.5 text-[10px] text-slate-500">
-                                    Active workspace
-                                </p>
-                            </div>
+                                        <div className="h-3 w-28 rounded bg-white/10" />
 
-                            <ChevronDown
-                                size={15}
-                                className={`
-                                    shrink-0 text-slate-500
-                                    transition-transform duration-200
-
-                                    ${
-                                        workspaceOpen
-                                            ? "rotate-180"
-                                            : ""
-                                    }
-                                `}
-                            />
-                        </div>
-
-                        {/* Setup Progress */}
-
-                        <div className="mt-4">
-
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-slate-500">
-                                    Workspace setup
-                                </span>
-
-                                <span className="text-[10px] font-medium text-slate-400">
-                                    72%
-                                </span>
-                            </div>
-
-                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                                <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-[#19b5fe] to-[#7c3aed]" />
+                                        <div className="mt-2 h-2.5 w-20 rounded bg-white/10" />
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </button>
 
-                    {/* Workspace Dropdown */}
+                    ) : currentTenant ? (
 
-                    {workspaceOpen && (
-                        <div className="mt-2 rounded-xl border border-white/10 bg-[#0b1728] p-2 shadow-xl">
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
 
-                            <button
-                                type="button"
-                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs text-slate-300 transition hover:bg-white/5 hover:text-white"
-                            >
-                                <Building2
-                                    size={15}
-                                    className="text-[#19b5fe]"
-                                />
+                            <div className="flex items-center gap-3">
 
-                                <span className="flex-1">
-                                    Acme Corporation
-                                </span>
+                                {/* Organization Logo */}
 
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                            </button>
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white">
 
-                            <button
-                                type="button"
-                                className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs text-slate-400 transition hover:bg-white/5 hover:text-white"
-                            >
-                                <ChevronsUpDown
-                                    size={15}
-                                />
+                                    {organizationLogo ? (
 
-                                Switch workspace
-                            </button>
+                                        <img
+                                            src={organizationLogo}
+                                            alt={`${organizationName} logo`}
+                                            className="h-full w-full object-contain p-1.5"
+                                        />
+
+                                    ) : (
+
+                                        <Building2
+                                            size={20}
+                                            strokeWidth={1.8}
+                                            className="text-[#19b5fe]"
+                                        />
+
+                                    )}
+                                </div>
+
+                                {/* Organization Information */}
+
+                                <div className="min-w-0 flex-1">
+
+                                    <p className="truncate text-xs font-semibold text-white">
+                                        {organizationName}
+                                    </p>
+
+                                    <div className="mt-1 flex items-center gap-1.5">
+
+                                        <span
+                                            className={`
+                                                h-1.5 w-1.5 rounded-full
+
+                                                ${
+                                                    tenantStatus === "active"
+                                                        ? "bg-emerald-400"
+                                                        : "bg-amber-400"
+                                                }
+                                            `}
+                                        />
+
+                                        <span className="capitalize text-[10px] text-slate-400">
+                                            {tenantStatus || "Unknown"}
+                                        </span>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                            {/* Tenant Metadata */}
+
+                            <div className="mt-4 border-t border-white/10 pt-3">
+
+                                {tenantTimezone && (
+                                    <div className="flex items-center justify-between">
+
+                                        <span className="text-[10px] text-slate-500">
+                                            Timezone
+                                        </span>
+
+                                        <span className="max-w-[130px] truncate text-[10px] font-medium text-slate-300">
+                                            {tenantTimezone}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {tenantRole && (
+                                    <div className="mt-2 flex items-center justify-between">
+
+                                        <span className="text-[10px] text-slate-500">
+                                            Access
+                                        </span>
+
+                                        <span className="capitalize text-[10px] font-medium text-slate-300">
+                                            {tenantRole}
+                                        </span>
+                                    </div>
+                                )}
+
+                            </div>
                         </div>
-                    )}
+
+                    ) : isPlatformOwner ? (
+
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+
+                            <div className="flex items-center gap-3">
+
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#19b5fe]/10">
+
+                                    <Building2
+                                        size={18}
+                                        className="text-[#19b5fe]"
+                                    />
+                                </div>
+
+                                <div>
+
+                                    <p className="text-xs font-semibold text-white">
+                                        Platform Administration
+                                    </p>
+
+                                    <p className="mt-1 text-[10px] text-slate-500">
+                                        No MSP selected
+                                    </p>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    ) : null}
+
                 </div>
+
+                {/* =====================================================
+                    USER
+                ====================================================== */}
+
+                {!authLoading && user && (
+                    <div className="border-t border-white/10 px-4 pt-4">
+
+                        <div className="px-4 pb-3">
+
+                            <p className="truncate text-xs font-semibold text-slate-300">
+                                {user.name}
+                            </p>
+
+                            <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                                {user.email}
+                            </p>
+
+                        </div>
+
+                    </div>
+                )}
 
                 {/* =====================================================
                     SIGN OUT
                 ====================================================== */}
 
-                <div className="shrink-0 border-t border-white/10 p-4">
+                <div className="shrink-0 px-4 pb-4">
 
                     <button
                         type="button"

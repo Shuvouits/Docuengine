@@ -1,506 +1,1276 @@
 import {
-    Building2,
-    Users,
-    FileText,
-    ShieldCheck,
-    ArrowUpRight,
-    Plus,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
+
+import { useNavigate } from "react-router-dom";
+
+import {
     Activity,
+    AlertCircle,
+    Building2,
+    CalendarDays,
     CheckCircle2,
     Clock3,
+    Flag,
+    Globe2,
+    Languages,
+    LoaderCircle,
+    Palette,
+    Plus,
+    Settings2,
+    ShieldCheck,
 } from "lucide-react";
 
-import StatCard from "../../component/admin/StartCard";
+import api from "../../api/axios";
 
-function DashboardPage() {
+function DashboardPage({
+    authData = null,
+    authLoading = false,
+}) {
+    const navigate = useNavigate();
 
     /*
     |--------------------------------------------------------------------------
-    | STATIC DASHBOARD DATA
-    |--------------------------------------------------------------------------
-    | Later these values will come from Laravel APIs.
+    | Authenticated User
     |--------------------------------------------------------------------------
     */
 
-    const stats = [
-        {
-            title: "Total Tenants",
-            value: "24",
-            change: "+12.5%",
-            description: "from last month",
-            icon: Building2,
-        },
-        {
-            title: "Active Users",
-            value: "186",
-            change: "+8.2%",
-            description: "from last month",
-            icon: Users,
-        },
-        {
-            title: "Documentation",
-            value: "1,284",
-            change: "+18.4%",
-            description: "from last month",
-            icon: FileText,
-        },
-        {
-            title: "Security Score",
-            value: "94%",
-            change: "+4.6%",
-            description: "from last month",
-            icon: ShieldCheck,
-        },
-    ];
+    const user = authData?.user || null;
 
+    const currentTenant =
+        authData?.current_tenant || null;
 
-    const recentActivity = [
-        {
-            title: "New tenant created",
-            description: "Acme Corporation joined the platform",
-            time: "12 minutes ago",
-            type: "tenant",
-        },
-        {
-            title: "Documentation updated",
-            description: "Network Infrastructure documentation was updated",
-            time: "38 minutes ago",
-            type: "documentation",
-        },
-        {
-            title: "New user invited",
-            description: "John Smith was invited to Acme Corporation",
-            time: "1 hour ago",
-            type: "user",
-        },
-        {
-            title: "Security policy updated",
-            description: "Workspace security settings were updated",
-            time: "2 hours ago",
-            type: "security",
-        },
-    ];
+    const isPlatformOwner =
+        Boolean(user?.is_platform_owner);
 
+    /*
+    |--------------------------------------------------------------------------
+    | State
+    |--------------------------------------------------------------------------
+    */
 
-    const tenants = [
-        {
-            name: "Acme Corporation",
-            users: 32,
-            documents: 248,
-            status: "Active",
-            initials: "AC",
-        },
-        {
-            name: "Northstar IT",
-            users: 24,
-            documents: 184,
-            status: "Active",
-            initials: "NI",
-        },
-        {
-            name: "Vertex Solutions",
-            users: 18,
-            documents: 126,
-            status: "Active",
-            initials: "VS",
-        },
-        {
-            name: "BluePeak Systems",
-            users: 12,
-            documents: 94,
-            status: "Pending",
-            initials: "BS",
-        },
-    ];
+    const [tenants, setTenants] = useState([]);
 
+    const [configuration, setConfiguration] =
+        useState(null);
 
-    return (
-        <div className="space-y-8">
+    const [dashboardLoading, setDashboardLoading] =
+        useState(false);
 
-            {/* =====================================================
-                HEADER
-            ====================================================== */}
+    const [error, setError] = useState("");
 
-            <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+    /*
+    |--------------------------------------------------------------------------
+    | Load Dashboard Data
+    |--------------------------------------------------------------------------
+    */
 
-                <div>
-                    <div className="mb-2 flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[#19b5fe]" />
+    useEffect(() => {
+        if (authLoading || !authData) {
+            return;
+        }
 
-                        <span className="text-xs font-semibold uppercase tracking-[0.15em] text-[#19b5fe]">
-                            Platform Overview
-                        </span>
-                    </div>
+        const loadDashboard = async () => {
+            setDashboardLoading(true);
+            setError("");
 
-                    <h1 className="text-2xl font-bold tracking-tight text-[#07111f] lg:text-3xl">
-                        Welcome back, Admin
-                    </h1>
+            try {
+                /*
+                |--------------------------------------------------------------------------
+                | Platform Owner
+                |--------------------------------------------------------------------------
+                */
 
-                    <p className="mt-2 text-sm text-slate-500">
-                        Here’s what’s happening across your DocuEngine platform.
-                    </p>
-                </div>
+                if (isPlatformOwner) {
+                    const response =
+                        await api.get("/tenants");
 
+                    const payload =
+                        response.data?.data;
 
-                {/* Quick Action */}
+                    let tenantRows = [];
 
-                <button
-                    type="button"
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7046f5] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#7046f5]/20 transition hover:bg-[#825cf7]"
-                >
-                    <Plus size={18} />
+                    if (Array.isArray(payload)) {
+                        tenantRows = payload;
+                    } else if (
+                        Array.isArray(payload?.data)
+                    ) {
+                        tenantRows = payload.data;
+                    }
 
-                    Add tenant
-                </button>
+                    setTenants(tenantRows);
 
-            </div>
+                    return;
+                }
 
+                /*
+                |--------------------------------------------------------------------------
+                | Tenant Administrator
+                |--------------------------------------------------------------------------
+                */
 
-            {/* =====================================================
-                STATISTICS
-            ====================================================== */}
+                if (currentTenant?.id) {
+                    const response =
+                        await api.get(
+                            `/tenants/${currentTenant.id}/configuration`
+                        );
 
-            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+                    setConfiguration(
+                        response.data?.data || null
+                    );
+                }
+            } catch (error) {
+                console.error(
+                    "Dashboard loading failed:",
+                    error
+                );
 
-                {stats.map((stat) => (
-                    <StatCard
-                        key={stat.title}
-                        {...stat}
+                setError(
+                    error.response?.data?.message ||
+                        "Unable to load dashboard data."
+                );
+            } finally {
+                setDashboardLoading(false);
+            }
+        };
+
+        loadDashboard();
+    }, [
+        authData,
+        authLoading,
+        currentTenant?.id,
+        isPlatformOwner,
+    ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Platform Statistics
+    |--------------------------------------------------------------------------
+    */
+
+    const platformStats = useMemo(() => {
+        const statuses = {
+            active: 0,
+            suspended: 0,
+            archived: 0,
+            inactive: 0,
+        };
+
+        tenants.forEach((tenant) => {
+            const status =
+                String(
+                    tenant?.status || ""
+                ).toLowerCase();
+
+            if (
+                Object.prototype.hasOwnProperty.call(
+                    statuses,
+                    status
+                )
+            ) {
+                statuses[status] += 1;
+            }
+        });
+
+        return {
+            total: tenants.length,
+            ...statuses,
+        };
+    }, [tenants]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant Configuration
+    |--------------------------------------------------------------------------
+    */
+
+    const tenant =
+        configuration || currentTenant || null;
+
+    const settings =
+        configuration?.settings ||
+        currentTenant?.settings ||
+        null;
+
+    const branding =
+        configuration?.branding ||
+        currentTenant?.branding ||
+        null;
+
+    const featureFlags =
+        configuration?.feature_flags || [];
+
+    const terminology =
+        configuration?.settings?.terminology || {};
+
+    const enabledFeatures =
+        featureFlags.filter(
+            (feature) => Boolean(feature?.enabled)
+        ).length;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Helpers
+    |--------------------------------------------------------------------------
+    */
+
+    const formatStatus = (status) => {
+        if (!status) {
+            return "Unknown";
+        }
+
+        return (
+            status.charAt(0).toUpperCase() +
+            status.slice(1)
+        );
+    };
+
+    const statusClasses = (status) => {
+        switch (
+            String(status || "").toLowerCase()
+        ) {
+            case "active":
+                return "bg-emerald-50 text-emerald-700";
+
+            case "suspended":
+                return "bg-amber-50 text-amber-700";
+
+            case "archived":
+                return "bg-slate-100 text-slate-600";
+
+            case "inactive":
+                return "bg-red-50 text-red-600";
+
+            default:
+                return "bg-slate-100 text-slate-600";
+        }
+    };
+
+    const statusDotClasses = (status) => {
+        switch (
+            String(status || "").toLowerCase()
+        ) {
+            case "active":
+                return "bg-emerald-500";
+
+            case "suspended":
+                return "bg-amber-500";
+
+            case "archived":
+                return "bg-slate-400";
+
+            case "inactive":
+                return "bg-red-500";
+
+            default:
+                return "bg-slate-400";
+        }
+    };
+
+    const formatDate = (value) => {
+        if (!value) {
+            return "Not available";
+        }
+
+        const date = new Date(value);
+
+        if (Number.isNaN(date.getTime())) {
+            return "Not available";
+        }
+
+        return date.toLocaleDateString(
+            undefined,
+            {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+            }
+        );
+    };
+
+    /*
+    |--------------------------------------------------------------------------
+    | Loading
+    |--------------------------------------------------------------------------
+    */
+
+    if (authLoading) {
+        return <DashboardLoader />;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Error
+    |--------------------------------------------------------------------------
+    */
+
+    if (error) {
+        return (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
+
+                <div className="flex items-start gap-3">
+
+                    <AlertCircle
+                        size={20}
+                        className="mt-0.5 shrink-0 text-red-500"
                     />
-                ))}
 
+                    <div>
+                        <h2 className="font-semibold text-red-700">
+                            Dashboard unavailable
+                        </h2>
+
+                        <p className="mt-1 text-sm text-red-600">
+                            {error}
+                        </p>
+                    </div>
+
+                </div>
             </div>
-
-
-            {/* =====================================================
-                MAIN GRID
-            ====================================================== */}
-
-            <div className="grid gap-6 xl:grid-cols-[1.45fr_1fr]">
-
-
-                {/* =================================================
-                    TENANTS
-                ================================================== */}
-
-                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-
-                    {/* Section Header */}
-
-                    <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-
-                        <div>
-                            <h2 className="text-base font-bold text-slate-900">
-                                Recent tenants
-                            </h2>
-
-                            <p className="mt-1 text-xs text-slate-500">
-                                Organizations currently using the platform.
-                            </p>
-                        </div>
-
-                        <button
-                            type="button"
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#7046f5] transition hover:text-[#5f38df]"
-                        >
-                            View all
-
-                            <ArrowUpRight size={14} />
-                        </button>
-
-                    </div>
-
-
-                    {/* Tenant List */}
-
-                    <div className="divide-y divide-slate-100">
-
-                        {tenants.map((tenant) => (
-                            <div
-                                key={tenant.name}
-                                className="flex items-center justify-between gap-4 px-6 py-4 transition hover:bg-slate-50"
-                            >
-
-                                <div className="flex min-w-0 items-center gap-3">
-
-                                    {/* Avatar */}
-
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#19b5fe]/15 to-[#7c3aed]/15 text-xs font-bold text-[#7046f5]">
-                                        {tenant.initials}
-                                    </div>
-
-
-                                    <div className="min-w-0">
-
-                                        <p className="truncate text-sm font-semibold text-slate-900">
-                                            {tenant.name}
-                                        </p>
-
-                                        <p className="mt-0.5 text-xs text-slate-500">
-                                            {tenant.users} users · {tenant.documents} documents
-                                        </p>
-
-                                    </div>
-
-                                </div>
-
-
-                                {/* Status */}
-
-                                <div className="shrink-0">
-
-                                    <span
-                                        className={`
-                                            inline-flex items-center gap-1.5
-                                            rounded-full px-2.5 py-1
-                                            text-[10px] font-semibold
-                                            ${
-                                                tenant.status === "Active"
-                                                    ? "bg-emerald-50 text-emerald-600"
-                                                    : "bg-amber-50 text-amber-600"
-                                            }
-                                        `}
-                                    >
-                                        <span
-                                            className={`
-                                                h-1.5 w-1.5 rounded-full
-                                                ${
-                                                    tenant.status === "Active"
-                                                        ? "bg-emerald-500"
-                                                        : "bg-amber-500"
-                                                }
-                                            `}
-                                        />
-
-                                        {tenant.status}
-                                    </span>
-
-                                </div>
-
-                            </div>
-                        ))}
-
-                    </div>
-
-                </section>
-
-
-                {/* =================================================
-                    RECENT ACTIVITY
-                ================================================== */}
-
-                <section className="rounded-2xl border border-slate-200 bg-white">
-
-                    {/* Header */}
-
-                    <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
-
-                        <div>
-                            <h2 className="text-base font-bold text-slate-900">
-                                Recent activity
-                            </h2>
-
-                            <p className="mt-1 text-xs text-slate-500">
-                                Latest platform events.
-                            </p>
-                        </div>
-
-                        <Activity
-                            size={18}
-                            className="text-[#7046f5]"
-                        />
-
-                    </div>
-
-
-                    {/* Activity */}
-
-                    <div className="px-6">
-
-                        {recentActivity.map((activity, index) => (
-
-                            <div
-                                key={activity.title}
-                                className={`
-                                    relative flex gap-3 py-5
-                                    ${
-                                        index !== recentActivity.length - 1
-                                            ? "border-b border-slate-100"
-                                            : ""
-                                    }
-                                `}
-                            >
-
-                                {/* Icon */}
-
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-50">
-
-                                    {activity.type === "tenant" && (
-                                        <Building2
-                                            size={16}
-                                            className="text-[#19b5fe]"
-                                        />
-                                    )}
-
-                                    {activity.type === "documentation" && (
-                                        <FileText
-                                            size={16}
-                                            className="text-[#7046f5]"
-                                        />
-                                    )}
-
-                                    {activity.type === "user" && (
-                                        <Users
-                                            size={16}
-                                            className="text-emerald-500"
-                                        />
-                                    )}
-
-                                    {activity.type === "security" && (
-                                        <ShieldCheck
-                                            size={16}
-                                            className="text-amber-500"
-                                        />
-                                    )}
-
-                                </div>
-
-
-                                {/* Content */}
-
-                                <div className="min-w-0 flex-1">
-
-                                    <p className="text-sm font-semibold text-slate-900">
-                                        {activity.title}
-                                    </p>
-
-                                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                                        {activity.description}
-                                    </p>
-
-                                    <div className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-400">
-
-                                        <Clock3 size={11} />
-
-                                        {activity.time}
-
-                                    </div>
-
-                                </div>
-
-                            </div>
-
-                        ))}
-
-                    </div>
-
-                </section>
-
-            </div>
-
-
-            {/* =====================================================
-                PLATFORM HEALTH
-            ====================================================== */}
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-6">
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Platform Owner Dashboard
+    |--------------------------------------------------------------------------
+    */
+
+    if (isPlatformOwner) {
+        return (
+            <div className="space-y-8">
+
+                {/* =====================================================
+                    HEADER
+                ====================================================== */}
 
                 <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
 
                     <div>
-                        <div className="flex items-center gap-2">
 
-                            <CheckCircle2
-                                size={19}
-                                className="text-emerald-500"
-                            />
+                        <div className="mb-2 flex items-center gap-2">
+
+                            <span className="h-2 w-2 rounded-full bg-[#19b5fe]" />
+
+                            <span className="text-xs font-semibold uppercase tracking-[0.15em] text-[#19b5fe]">
+                                Platform Overview
+                            </span>
+                        </div>
+
+                        <h1 className="text-2xl font-bold tracking-tight text-[#07111f] lg:text-3xl">
+                            Welcome back,{" "}
+                            {user?.name || "Platform Owner"}
+                        </h1>
+
+                        <p className="mt-2 text-sm text-slate-500">
+                            Live overview of the MSP organizations currently registered in DocuEngine.
+                        </p>
+
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() =>
+                            navigate(
+                                "/admin/tenants/create"
+                            )
+                        }
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#7046f5] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#7046f5]/20 transition hover:bg-[#825cf7]"
+                    >
+                        <Plus size={18} />
+
+                        Add MSP
+                    </button>
+
+                </div>
+
+                {/* =====================================================
+                    PLATFORM STATISTICS
+                ====================================================== */}
+
+                <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+
+                    <MetricCard
+                        title="Total MSPs"
+                        value={platformStats.total}
+                        description="Registered organizations"
+                        icon={Building2}
+                    />
+
+                    <MetricCard
+                        title="Active MSPs"
+                        value={platformStats.active}
+                        description="Currently active"
+                        icon={CheckCircle2}
+                    />
+
+                    <MetricCard
+                        title="Suspended"
+                        value={platformStats.suspended}
+                        description="Temporarily restricted"
+                        icon={ShieldCheck}
+                    />
+
+                    <MetricCard
+                        title="Archived"
+                        value={platformStats.archived}
+                        description="Archived organizations"
+                        icon={Activity}
+                    />
+
+                </div>
+
+                {/* =====================================================
+                    MSP ORGANIZATIONS
+                ====================================================== */}
+
+                <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+
+                    <div className="flex flex-col justify-between gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center">
+
+                        <div>
 
                             <h2 className="text-base font-bold text-slate-900">
-                                Platform health
+                                MSP Organizations
                             </h2>
+
+                            <p className="mt-1 text-xs text-slate-500">
+                                Live tenant data from the DocuEngine platform.
+                            </p>
 
                         </div>
 
-                        <p className="mt-1 text-xs text-slate-500">
-                            Your platform is operating normally.
-                        </p>
+                        <button
+                            type="button"
+                            onClick={() =>
+                                navigate(
+                                    "/admin/tenants"
+                                )
+                            }
+                            className="text-xs font-semibold text-[#7046f5] transition hover:text-[#5f38df]"
+                        >
+                            Manage organizations
+                        </button>
+
                     </div>
 
+                    {dashboardLoading ? (
 
-                    <span className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-600">
+                        <div className="flex items-center justify-center p-12">
+                            <LoaderCircle
+                                size={26}
+                                className="animate-spin text-[#19b5fe]"
+                            />
+                        </div>
 
-                        <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    ) : tenants.length ? (
 
-                        All systems operational
+                        <div className="overflow-x-auto">
 
+                            <table className="w-full">
+
+                                <thead>
+
+                                    <tr className="border-b border-slate-100 bg-slate-50/70">
+
+                                        <TableHead>
+                                            Organization
+                                        </TableHead>
+
+                                        <TableHead>
+                                            Status
+                                        </TableHead>
+
+                                        <TableHead>
+                                            Locale
+                                        </TableHead>
+
+                                        <TableHead>
+                                            Timezone
+                                        </TableHead>
+
+                                        <TableHead>
+                                            Created
+                                        </TableHead>
+
+                                    </tr>
+
+                                </thead>
+
+                                <tbody className="divide-y divide-slate-100">
+
+                                    {tenants
+                                        .slice(0, 8)
+                                        .map((tenant) => (
+
+                                            <tr
+                                                key={tenant.id}
+                                                className="transition hover:bg-slate-50"
+                                            >
+
+                                                <td className="px-6 py-4">
+
+                                                    <div className="flex items-center gap-3">
+
+                                                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#19b5fe]/10 text-xs font-bold text-[#19b5fe]">
+
+                                                            {(
+                                                                tenant.name ||
+                                                                "MSP"
+                                                            )
+                                                                .slice(
+                                                                    0,
+                                                                    2
+                                                                )
+                                                                .toUpperCase()}
+
+                                                        </div>
+
+                                                        <div>
+
+                                                            <p className="text-sm font-semibold text-slate-900">
+                                                                {tenant.name}
+                                                            </p>
+
+                                                            <p className="mt-0.5 text-xs text-slate-400">
+                                                                {tenant.slug}
+                                                            </p>
+
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                <td className="px-6 py-4">
+
+                                                    <span
+                                                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusClasses(
+                                                            tenant.status
+                                                        )}`}
+                                                    >
+                                                        <span
+                                                            className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(
+                                                                tenant.status
+                                                            )}`}
+                                                        />
+
+                                                        {formatStatus(
+                                                            tenant.status
+                                                        )}
+                                                    </span>
+
+                                                </td>
+
+                                                <td className="px-6 py-4 text-sm text-slate-600">
+                                                    {tenant.locale ||
+                                                        "—"}
+                                                </td>
+
+                                                <td className="px-6 py-4 text-sm text-slate-600">
+                                                    {tenant.timezone ||
+                                                        "—"}
+                                                </td>
+
+                                                <td className="px-6 py-4 text-sm text-slate-500">
+                                                    {formatDate(
+                                                        tenant.created_at
+                                                    )}
+                                                </td>
+
+                                            </tr>
+                                        ))}
+
+                                </tbody>
+
+                            </table>
+
+                        </div>
+
+                    ) : (
+
+                        <EmptyState
+                            title="No MSP organizations found"
+                            description="Create the first MSP organization to start using the platform."
+                        />
+
+                    )}
+
+                </section>
+
+                {/* =====================================================
+                    MODULE 1 FOUNDATION
+                ====================================================== */}
+
+                <section className="rounded-2xl border border-slate-200 bg-white p-6">
+
+                    <div className="flex items-start gap-4">
+
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50">
+                            <ShieldCheck
+                                size={20}
+                                className="text-emerald-600"
+                            />
+                        </div>
+
+                        <div>
+
+                            <h2 className="font-bold text-slate-900">
+                                Multi-tenant foundation active
+                            </h2>
+
+                            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                                Tenant lifecycle, tenant isolation,
+                                platform administration,
+                                organization configuration,
+                                branding and feature controls are
+                                available in the current Module 1
+                                platform.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+                </section>
+
+            </div>
+        );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant Administrator Dashboard
+    |--------------------------------------------------------------------------
+    */
+
+    return (
+        <div className="space-y-8">
+
+            {/* =========================================================
+                HEADER
+            ========================================================== */}
+
+            <div>
+
+                <div className="mb-2 flex items-center gap-2">
+
+                    <span className="h-2 w-2 rounded-full bg-[#19b5fe]" />
+
+                    <span className="text-xs font-semibold uppercase tracking-[0.15em] text-[#19b5fe]">
+                        Organization Overview
                     </span>
 
                 </div>
 
+                <h1 className="text-2xl font-bold tracking-tight text-[#07111f] lg:text-3xl">
+                    Welcome back,{" "}
+                    {user?.name || "Administrator"}
+                </h1>
 
-                {/* Health Bars */}
+                <p className="mt-2 text-sm text-slate-500">
+                    Live overview of{" "}
+                    {branding?.display_name ||
+                        tenant?.name ||
+                        "your organization"}.
+                </p>
 
-                <div className="mt-6 grid gap-5 md:grid-cols-3">
+            </div>
 
-                    <div>
-                        <div className="mb-2 flex justify-between text-xs">
+            {/* =========================================================
+                SUMMARY
+            ========================================================== */}
 
-                            <span className="font-medium text-slate-600">
-                                API Services
-                            </span>
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
 
-                            <span className="font-semibold text-slate-900">
-                                99.9%
-                            </span>
+                <MetricCard
+                    title="Organization Status"
+                    value={formatStatus(
+                        tenant?.status
+                    )}
+                    description="Current tenant lifecycle status"
+                    icon={CheckCircle2}
+                />
 
-                        </div>
+                <MetricCard
+                    title="Access Level"
+                    value={formatStatus(
+                        currentTenant?.membership
+                            ?.role || "admin"
+                    )}
+                    description="Your organization access"
+                    icon={ShieldCheck}
+                />
 
-                        <div className="h-2 rounded-full bg-slate-100">
-                            <div className="h-full w-[99%] rounded-full bg-emerald-500" />
-                        </div>
-                    </div>
+                <MetricCard
+                    title="Enabled Features"
+                    value={`${enabledFeatures}/${featureFlags.length}`}
+                    description="Tenant feature flags"
+                    icon={Flag}
+                />
 
+                <MetricCard
+                    title="Timezone"
+                    value={
+                        tenant?.timezone || "Not set"
+                    }
+                    description="Organization timezone"
+                    icon={Clock3}
+                    compact
+                />
 
-                    <div>
-                        <div className="mb-2 flex justify-between text-xs">
+            </div>
 
-                            <span className="font-medium text-slate-600">
-                                Database
-                            </span>
+            {dashboardLoading ? (
 
-                            <span className="font-semibold text-slate-900">
-                                99.8%
-                            </span>
+                <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-slate-200 bg-white">
 
-                        </div>
-
-                        <div className="h-2 rounded-full bg-slate-100">
-                            <div className="h-full w-[98%] rounded-full bg-[#19b5fe]" />
-                        </div>
-                    </div>
-
-
-                    <div>
-                        <div className="mb-2 flex justify-between text-xs">
-
-                            <span className="font-medium text-slate-600">
-                                Security
-                            </span>
-
-                            <span className="font-semibold text-slate-900">
-                                94%
-                            </span>
-
-                        </div>
-
-                        <div className="h-2 rounded-full bg-slate-100">
-                            <div className="h-full w-[94%] rounded-full bg-[#7046f5]" />
-                        </div>
-                    </div>
+                    <LoaderCircle
+                        size={28}
+                        className="animate-spin text-[#19b5fe]"
+                    />
 
                 </div>
 
-            </section>
+            ) : (
+
+                <>
+                    {/* =================================================
+                        ORGANIZATION + REGIONAL
+                    ================================================== */}
+
+                    <div className="grid gap-6 xl:grid-cols-2">
+
+                        <InfoSection
+                            title="Organization Identity"
+                            description="Core tenant information"
+                            icon={Building2}
+                        >
+                            <InfoRow
+                                label="Organization"
+                                value={tenant?.name}
+                            />
+
+                            <InfoRow
+                                label="Display Name"
+                                value={
+                                    branding?.display_name
+                                }
+                            />
+
+                            <InfoRow
+                                label="Slug"
+                                value={tenant?.slug}
+                            />
+
+                            <InfoRow
+                                label="Locale"
+                                value={
+                                    tenant?.locale
+                                }
+                            />
+
+                            <InfoRow
+                                label="Status"
+                                value={formatStatus(
+                                    tenant?.status
+                                )}
+                            />
+
+                        </InfoSection>
+
+                        <InfoSection
+                            title="Regional Settings"
+                            description="Localization and date preferences"
+                            icon={Globe2}
+                        >
+                            <InfoRow
+                                label="Timezone"
+                                value={
+                                    tenant?.timezone
+                                }
+                            />
+
+                            <InfoRow
+                                label="Date Format"
+                                value={
+                                    settings?.date_format
+                                }
+                            />
+
+                            <InfoRow
+                                label="Time Format"
+                                value={
+                                    settings?.time_format
+                                }
+                            />
+
+                            <InfoRow
+                                label="Week Starts"
+                                value={formatStatus(
+                                    settings?.week_start
+                                )}
+                            />
+
+                            <InfoRow
+                                label="Language"
+                                value={
+                                    tenant?.locale
+                                }
+                            />
+
+                        </InfoSection>
+
+                    </div>
+
+                    {/* =================================================
+                        BRANDING
+                    ================================================== */}
+
+                    <section className="rounded-2xl border border-slate-200 bg-white">
+
+                        <SectionHeader
+                            title="Organization Branding"
+                            description="Brand identity currently applied to this tenant."
+                            icon={Palette}
+                        />
+
+                        <div className="grid gap-6 p-6 md:grid-cols-[1fr_1.4fr]">
+
+                            <div className="flex items-center gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-5">
+
+                                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white">
+
+                                    {branding?.logo_url ? (
+
+                                        <img
+                                            src={
+                                                branding.logo_url
+                                            }
+                                            alt={`${branding?.display_name || tenant?.name} logo`}
+                                            className="h-full w-full object-contain p-2"
+                                        />
+
+                                    ) : (
+
+                                        <Building2
+                                            size={26}
+                                            className="text-slate-400"
+                                        />
+
+                                    )}
+
+                                </div>
+
+                                <div className="min-w-0">
+
+                                    <p className="truncate font-semibold text-slate-900">
+                                        {branding?.display_name ||
+                                            tenant?.name}
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Organization logo
+                                    </p>
+
+                                </div>
+
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+
+                                <ColorCard
+                                    label="Primary Color"
+                                    color={
+                                        branding?.primary_color
+                                    }
+                                />
+
+                                <ColorCard
+                                    label="Secondary Color"
+                                    color={
+                                        branding?.secondary_color
+                                    }
+                                />
+
+                            </div>
+
+                        </div>
+
+                    </section>
+
+                    {/* =================================================
+                        FEATURES + TERMINOLOGY
+                    ================================================== */}
+
+                    <div className="grid gap-6 xl:grid-cols-2">
+
+                        <InfoSection
+                            title="Feature Flags"
+                            description="Features configured for this organization"
+                            icon={Flag}
+                        >
+                            {featureFlags.length ? (
+
+                                featureFlags.map(
+                                    (feature) => (
+
+                                        <div
+                                            key={
+                                                feature.key
+                                            }
+                                            className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"
+                                        >
+
+                                            <div>
+
+                                                <p className="text-sm font-medium text-slate-700">
+                                                    {feature.key
+                                                        .replaceAll(
+                                                            "_",
+                                                            " "
+                                                        )
+                                                        .replace(
+                                                            /\b\w/g,
+                                                            (
+                                                                char
+                                                            ) =>
+                                                                char.toUpperCase()
+                                                        )}
+                                                </p>
+
+                                            </div>
+
+                                            <span
+                                                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                                                    feature.enabled
+                                                        ? "bg-emerald-50 text-emerald-600"
+                                                        : "bg-slate-100 text-slate-500"
+                                                }`}
+                                            >
+                                                {feature.enabled
+                                                    ? "Enabled"
+                                                    : "Disabled"}
+                                            </span>
+
+                                        </div>
+
+                                    )
+                                )
+
+                            ) : (
+
+                                <p className="py-3 text-sm text-slate-400">
+                                    No feature flags configured.
+                                </p>
+
+                            )}
+
+                        </InfoSection>
+
+                        <InfoSection
+                            title="Terminology"
+                            description="Organization-specific naming"
+                            icon={Languages}
+                        >
+                            {Object.keys(
+                                terminology
+                            ).length ? (
+
+                                Object.entries(
+                                    terminology
+                                ).map(
+                                    ([key, value]) => (
+
+                                        <InfoRow
+                                            key={key}
+                                            label={key
+                                                .replaceAll(
+                                                    "_",
+                                                    " "
+                                                )
+                                                .replace(
+                                                    /\b\w/g,
+                                                    (
+                                                        char
+                                                    ) =>
+                                                        char.toUpperCase()
+                                                )}
+                                            value={value}
+                                        />
+
+                                    )
+                                )
+
+                            ) : (
+
+                                <p className="py-3 text-sm text-slate-400">
+                                    No terminology overrides configured.
+                                </p>
+
+                            )}
+
+                        </InfoSection>
+
+                    </div>
+                </>
+            )}
+
+        </div>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Metric Card
+|--------------------------------------------------------------------------
+*/
+
+function MetricCard({
+    title,
+    value,
+    description,
+    icon: Icon,
+    compact = false,
+}) {
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+
+            <div className="flex items-start justify-between">
+
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#19b5fe]/10 to-[#7046f5]/10">
+
+                    <Icon
+                        size={20}
+                        className="text-[#7046f5]"
+                    />
+
+                </div>
+
+            </div>
+
+            <p className="mt-5 text-xs font-medium text-slate-500">
+                {title}
+            </p>
+
+            <p
+                className={`mt-1 font-bold text-[#07111f] ${
+                    compact
+                        ? "text-lg"
+                        : "text-2xl"
+                }`}
+            >
+                {value}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-400">
+                {description}
+            </p>
+
+        </div>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Information Section
+|--------------------------------------------------------------------------
+*/
+
+function InfoSection({
+    title,
+    description,
+    icon: Icon,
+    children,
+}) {
+    return (
+        <section className="rounded-2xl border border-slate-200 bg-white">
+
+            <SectionHeader
+                title={title}
+                description={description}
+                icon={Icon}
+            />
+
+            <div className="px-6 py-2">
+                {children}
+            </div>
+
+        </section>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Section Header
+|--------------------------------------------------------------------------
+*/
+
+function SectionHeader({
+    title,
+    description,
+    icon: Icon,
+}) {
+    return (
+        <div className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
+
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#19b5fe]/10">
+
+                <Icon
+                    size={17}
+                    className="text-[#19b5fe]"
+                />
+
+            </div>
+
+            <div>
+
+                <h2 className="text-sm font-bold text-slate-900">
+                    {title}
+                </h2>
+
+                <p className="mt-0.5 text-xs text-slate-500">
+                    {description}
+                </p>
+
+            </div>
+
+        </div>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Information Row
+|--------------------------------------------------------------------------
+*/
+
+function InfoRow({
+    label,
+    value,
+}) {
+    return (
+        <div className="flex items-center justify-between gap-6 border-b border-slate-100 py-3.5 last:border-0">
+
+            <span className="text-xs text-slate-500">
+                {label}
+            </span>
+
+            <span className="max-w-[65%] truncate text-right text-xs font-semibold text-slate-800">
+                {value || "Not set"}
+            </span>
+
+        </div>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Color Card
+|--------------------------------------------------------------------------
+*/
+
+function ColorCard({
+    label,
+    color,
+}) {
+    return (
+        <div className="rounded-2xl border border-slate-100 p-4">
+
+            <p className="text-xs text-slate-500">
+                {label}
+            </p>
+
+            <div className="mt-3 flex items-center gap-3">
+
+                <div
+                    className="h-9 w-9 rounded-xl border border-slate-200"
+                    style={{
+                        backgroundColor:
+                            color || "#ffffff",
+                    }}
+                />
+
+                <span className="text-sm font-semibold text-slate-800">
+                    {color || "Not set"}
+                </span>
+
+            </div>
+
+        </div>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Table Header
+|--------------------------------------------------------------------------
+*/
+
+function TableHead({ children }) {
+    return (
+        <th className="px-6 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            {children}
+        </th>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Empty State
+|--------------------------------------------------------------------------
+*/
+
+function EmptyState({
+    title,
+    description,
+}) {
+    return (
+        <div className="px-6 py-14 text-center">
+
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+
+                <Building2
+                    size={20}
+                    className="text-slate-400"
+                />
+
+            </div>
+
+            <h3 className="mt-4 text-sm font-semibold text-slate-800">
+                {title}
+            </h3>
+
+            <p className="mx-auto mt-1 max-w-sm text-xs leading-5 text-slate-500">
+                {description}
+            </p>
+
+        </div>
+    );
+}
+
+/*
+|--------------------------------------------------------------------------
+| Dashboard Loader
+|--------------------------------------------------------------------------
+*/
+
+function DashboardLoader() {
+    return (
+        <div className="flex min-h-[450px] items-center justify-center">
+
+            <div className="text-center">
+
+                <LoaderCircle
+                    size={30}
+                    className="mx-auto animate-spin text-[#19b5fe]"
+                />
+
+                <p className="mt-3 text-sm text-slate-500">
+                    Loading dashboard...
+                </p>
+
+            </div>
 
         </div>
     );
