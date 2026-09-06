@@ -13,15 +13,49 @@ return new class extends Migration
 
             $table->uuid('tenant_id');
 
-            $table->string('date_format')->default('Y-m-d');
-            $table->string('time_format')->default('H:i');
+            /*
+            |--------------------------------------------------------------------------
+            | Date & Time
+            |--------------------------------------------------------------------------
+            */
 
-            $table->string('name_prefix')->nullable();
-            $table->string('name_suffix')->nullable();
+            $table->string('date_format')
+                ->default('Y-m-d');
 
-            $table->json('preferences')->nullable();
+            $table->string('time_format')
+                ->default('H:i');
+
+            $table->string('week_start')
+                ->default('monday');
+
+            /*
+            |--------------------------------------------------------------------------
+            | Naming
+            |--------------------------------------------------------------------------
+            */
+
+            $table->string('name_prefix')
+                ->nullable();
+
+            $table->string('name_suffix')
+                ->nullable();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Other Preferences
+            |--------------------------------------------------------------------------
+            */
+
+            $table->json('preferences')
+                ->nullable();
 
             $table->timestamps();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Constraints
+            |--------------------------------------------------------------------------
+            */
 
             $table->unique('tenant_id');
 

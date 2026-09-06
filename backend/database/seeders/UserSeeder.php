@@ -11,7 +11,7 @@ class UserSeeder extends Seeder
     {
         User::create([
             'name' => 'Platform Owner',
-            'email' => 'owner@docuengaine.com',
+            'email' => 'admin@example.com',
             'password' => 'password',
             'is_platform_owner' => true,
             'status' => 'active',

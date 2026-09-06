@@ -13,17 +13,49 @@ return new class extends Migration
 
             $table->uuid('tenant_id');
 
-            $table->string('display_name')->nullable();
+            /*
+            |--------------------------------------------------------------------------
+            | Branding
+            |--------------------------------------------------------------------------
+            */
 
-            $table->string('logo_path')->nullable();
-            $table->string('favicon_path')->nullable();
+            $table->string('display_name')
+                ->nullable();
 
-            $table->string('primary_color')->nullable();
-            $table->string('secondary_color')->nullable();
+            $table->string('logo_path')
+                ->nullable();
 
-            $table->json('custom_styles')->nullable();
+            $table->string('favicon_path')
+                ->nullable();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Colors
+            |--------------------------------------------------------------------------
+            */
+
+            $table->string('primary_color')
+                ->nullable();
+
+            $table->string('secondary_color')
+                ->nullable();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Advanced Branding
+            |--------------------------------------------------------------------------
+            */
+
+            $table->json('custom_styles')
+                ->nullable();
 
             $table->timestamps();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Constraints
+            |--------------------------------------------------------------------------
+            */
 
             $table->unique('tenant_id');
 

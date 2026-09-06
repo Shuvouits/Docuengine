@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TenantSetting extends Model
 {
@@ -10,16 +11,19 @@ class TenantSetting extends Model
         'tenant_id',
         'date_format',
         'time_format',
+        'week_start',
         'name_prefix',
         'name_suffix',
+        'terminology',
         'preferences',
     ];
 
     protected $casts = [
+        'terminology' => 'array',
         'preferences' => 'array',
     ];
 
-    public function tenant()
+    public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
     }

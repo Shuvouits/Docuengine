@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TenantBranding extends Model
 {
@@ -20,8 +21,35 @@ class TenantBranding extends Model
         'custom_styles' => 'array',
     ];
 
-    public function tenant()
+    protected $appends = [
+        'logo_url',
+        'favicon_url',
+    ];
+
+    public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    public function getLogoUrlAttribute(): ?string
+    {
+        if (!$this->logo_path) {
+            return null;
+        }
+
+        return asset(
+            ltrim($this->logo_path, '/')
+        );
+    }
+
+    public function getFaviconUrlAttribute(): ?string
+    {
+        if (!$this->favicon_path) {
+            return null;
+        }
+
+        return asset(
+            ltrim($this->favicon_path, '/')
+        );
     }
 }

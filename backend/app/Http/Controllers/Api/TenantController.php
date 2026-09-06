@@ -48,22 +48,21 @@ class TenantController extends Controller
                 'string',
                 'max:255',
             ],
+
             'slug' => [
                 'required',
                 'string',
                 'max:255',
+                'alpha_dash',
                 'unique:tenants,slug',
             ],
-            'status' => [
-                'sometimes',
-                'string',
-                'max:50',
-            ],
+
             'locale' => [
                 'sometimes',
                 'string',
                 'max:10',
             ],
+
             'timezone' => [
                 'sometimes',
                 'string',
@@ -79,8 +78,10 @@ class TenantController extends Controller
         ], 201);
     }
 
-    public function update(Request $request, string $id): JsonResponse
-    {
+    public function update(
+        Request $request,
+        string $id
+    ): JsonResponse {
         $tenant = $this->tenantService->getById($id);
 
         if (!$tenant) {
@@ -95,22 +96,21 @@ class TenantController extends Controller
                 'string',
                 'max:255',
             ],
+
             'slug' => [
                 'sometimes',
                 'string',
                 'max:255',
+                'alpha_dash',
                 'unique:tenants,slug,' . $tenant->id,
             ],
-            'status' => [
-                'sometimes',
-                'string',
-                'max:50',
-            ],
+
             'locale' => [
                 'sometimes',
                 'string',
                 'max:10',
             ],
+
             'timezone' => [
                 'sometimes',
                 'string',
@@ -125,6 +125,91 @@ class TenantController extends Controller
 
         return response()->json([
             'message' => 'Tenant updated successfully.',
+            'data' => $tenant,
+        ]);
+    }
+
+    public function activate(string $id): JsonResponse
+    {
+        $tenant = $this->tenantService->getById($id);
+
+        if (!$tenant) {
+            return response()->json([
+                'message' => 'Tenant not found.',
+            ], 404);
+        }
+
+        $tenant = $this->tenantService->activate($tenant);
+
+        return response()->json([
+            'message' => 'Tenant activated successfully.',
+            'data' => $tenant,
+        ]);
+    }
+
+    public function deactivate(string $id): JsonResponse
+    {
+        $tenant = $this->tenantService->getById($id);
+
+        if (!$tenant) {
+            return response()->json([
+                'message' => 'Tenant not found.',
+            ], 404);
+        }
+
+        $tenant = $this->tenantService->deactivate($tenant);
+
+        return response()->json([
+            'message' => 'Tenant deactivated successfully.',
+            'data' => $tenant,
+        ]);
+    }
+
+    public function suspend(
+        Request $request,
+        string $id
+    ): JsonResponse {
+        $tenant = $this->tenantService->getById($id);
+
+        if (!$tenant) {
+            return response()->json([
+                'message' => 'Tenant not found.',
+            ], 404);
+        }
+
+        $validated = $request->validate([
+            'reason' => [
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+        ]);
+
+        $tenant = $this->tenantService->suspend(
+            $tenant,
+            $validated['reason'] ?? null
+        );
+
+        return response()->json([
+            'message' => 'Tenant suspended successfully.',
+            'data' => $tenant,
+        ]);
+    }
+
+    public function archive(string $id): JsonResponse
+    {
+        $tenant = $this->tenantService->getById($id);
+
+        if (!$tenant) {
+            return response()->json([
+                'message' => 'Tenant not found.',
+            ], 404);
+        }
+
+        $tenant = $this->tenantService->archive($tenant);
+
+        return response()->json([
+            'message' => 'Tenant archived successfully.',
             'data' => $tenant,
         ]);
     }

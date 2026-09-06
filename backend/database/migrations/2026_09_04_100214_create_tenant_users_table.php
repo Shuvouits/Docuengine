@@ -6,20 +6,46 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('tenant_users', function (Blueprint $table) {
             $table->id();
 
+            /*
+            |--------------------------------------------------------------------------
+            | Relationships
+            |--------------------------------------------------------------------------
+            */
+
             $table->uuid('tenant_id');
             $table->uuid('user_id');
 
-            $table->string('role')->default('member');
+            /*
+            |--------------------------------------------------------------------------
+            | Membership
+            |--------------------------------------------------------------------------
+            |
+            | Temporary role foundation.
+            | Full RBAC will come in Module 2.
+            |
+            */
+
+            $table->string('role')
+                ->default('member');
+
+            $table->string('status')
+                ->default('active');
+
+            $table->timestamp('joined_at')
+                ->nullable();
 
             $table->timestamps();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Constraints
+            |--------------------------------------------------------------------------
+            */
 
             $table->unique([
                 'tenant_id',
@@ -27,6 +53,7 @@ return new class extends Migration
             ]);
 
             $table->index('role');
+            $table->index('status');
 
             $table->foreign('tenant_id')
                 ->references('id')
@@ -40,9 +67,6 @@ return new class extends Migration
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('tenant_users');

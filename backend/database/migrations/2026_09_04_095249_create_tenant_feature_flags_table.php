@@ -13,12 +13,27 @@ return new class extends Migration
 
             $table->uuid('tenant_id');
 
-            $table->string('key');
-            $table->boolean('enabled')->default(false);
+            /*
+            |--------------------------------------------------------------------------
+            | Feature
+            |--------------------------------------------------------------------------
+            */
 
-            $table->json('config')->nullable();
+            $table->string('key');
+
+            $table->boolean('enabled')
+                ->default(false);
+
+            $table->json('config')
+                ->nullable();
 
             $table->timestamps();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Constraints
+            |--------------------------------------------------------------------------
+            */
 
             $table->unique([
                 'tenant_id',

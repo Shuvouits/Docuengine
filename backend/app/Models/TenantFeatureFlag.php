@@ -22,4 +22,9 @@ class TenantFeatureFlag extends Model
     {
         return $this->belongsTo(Tenant::class);
     }
+
+    public function isEnabled(): bool
+    {
+        return $this->enabled === true;
+    }
 }
