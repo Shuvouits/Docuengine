@@ -101,4 +101,31 @@ class Tenant extends Model
     {
         return $this->status === self::STATUS_ARCHIVED;
     }
+
+    public function securityGroups()
+{
+    return $this->hasMany(
+        SecurityGroup::class,
+        'tenant_id'
+    );
+}
+
+
+public function ipAccessPolicy()
+{
+    return $this->hasOne(
+        TenantIpAccessPolicy::class,
+        'tenant_id'
+    );
+}
+
+public function ipAllowlistEntries()
+{
+    return $this->hasMany(
+        TenantIpAllowlistEntry::class,
+        'tenant_id'
+    );
+}
+
+
 }

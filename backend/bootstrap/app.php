@@ -1,11 +1,16 @@
 <?php
 
+use App\Http\Middleware\EnforceTenantIpAllowlist;
+use App\Http\Middleware\EnsureActiveAuthSession;
 use App\Http\Middleware\PlatformOwnerMiddleware;
 use App\Http\Middleware\ResolveTenantMiddleware;
 use App\Http\Middleware\TenantAdminMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Spatie\Permission\Middleware\PermissionMiddleware;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -15,12 +20,33 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-         $middleware->alias([
+
+        $middleware->alias([
+            /*
+            |--------------------------------------------------------------------------
+            | DocuEngine Middleware
+            |--------------------------------------------------------------------------
+            */
+
             'platform.owner' => PlatformOwnerMiddleware::class,
             'tenant.admin' => TenantAdminMiddleware::class,
             'tenant.resolve' => ResolveTenantMiddleware::class,
+
+            /*
+            |--------------------------------------------------------------------------
+            | Spatie Permission Middleware
+            |--------------------------------------------------------------------------
+            */
+
+            'permission' => PermissionMiddleware::class,
+            'role' => RoleMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'auth.session' => EnsureActiveAuthSession::class,
+            'tenant.ip' => EnforceTenantIpAllowlist::class,
         ]);
+
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
-    })->create();
+    })
+    ->create();

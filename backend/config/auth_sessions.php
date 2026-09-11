@@ -1,0 +1,5 @@
+<?php
+
+return [
+    'idle_timeout_minutes' => 30,
+];

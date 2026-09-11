@@ -6,6 +6,7 @@ use App\Models\Tenant;
 use App\Services\Tenant\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
+use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpFoundation\Response;
 
 class ResolveTenantMiddleware
@@ -71,7 +72,39 @@ class ResolveTenantMiddleware
             }
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Set DocuEngine Tenant Context
+        |--------------------------------------------------------------------------
+        */
+
         $this->tenantContext->set($tenant);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Set Spatie Permission Tenant Context
+        |--------------------------------------------------------------------------
+        |
+        | From this point onward, role and permission checks will use
+        | the currently resolved tenant.
+        |
+        */
+
+        app(PermissionRegistrar::class)
+            ->setPermissionsTeamId($tenant->id);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Clear Cached User Permission Relations
+        |--------------------------------------------------------------------------
+        |
+        | Important when the same authenticated user may access more than one
+        | tenant during its lifetime.
+        |
+        */
+
+        $user->unsetRelation('roles');
+        $user->unsetRelation('permissions');
 
         return $next($request);
     }

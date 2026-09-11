@@ -8,6 +8,9 @@ use App\Services\Auth\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+use App\Services\Auth\AuthLoginService;
+use DomainException;
+
 class AuthController extends Controller
 {
     public function __construct(
@@ -21,36 +24,109 @@ class AuthController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    public function login(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'email' => [
-                'required',
-                'email',
-            ],
-            'password' => [
-                'required',
-                'string',
-            ],
-        ]);
+   public function login(
+    Request $request,
+    AuthLoginService $authLoginService
+): JsonResponse {
+    $validated = $request->validate([
+        'email' => [
+            'required',
+            'email',
+            'max:255',
+        ],
 
-        $token = $this->authService->login(
+        'password' => [
+            'required',
+            'string',
+        ],
+    ]);
+
+    try {
+        $result = $authLoginService->login(
             $validated['email'],
-            $validated['password']
+            $validated['password'],
+            $request->ip(),
+            $request->userAgent()
         );
-
-        if (!$token) {
-            return response()->json([
-                'message' => 'Invalid credentials.',
-            ], 401);
-        }
+    } catch (DomainException $exception) {
+        $status = $exception->getMessage()
+            === 'Invalid email or password.'
+                ? 401
+                : 403;
 
         return response()->json([
-            'message' => 'Login successful.',
-            'token' => $token,
-            'token_type' => 'Bearer',
+            'message' => $exception->getMessage(),
+        ], $status);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MFA Required
+    |--------------------------------------------------------------------------
+    |
+    | IMPORTANT:
+    | No JWT is issued at this stage.
+    |
+    */
+
+    if ($result['mfa_required']) {
+        return response()->json([
+            'message' => 'MFA verification required.',
+
+            'mfa_required' => true,
+
+            'challenge_token' =>
+                $result['challenge']['challenge_token'],
+
+            'expires_at' =>
+                $result['challenge']['expires_at'],
+
+            'expires_in' =>
+                $result['challenge']['expires_in'],
+
+            'methods' =>
+                $result['challenge']['methods'],
         ]);
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Normal JWT Login
+    |--------------------------------------------------------------------------
+    */
+
+    $user = $result['user'];
+
+    return response()->json([
+        'message' => 'Login successful.',
+
+        'mfa_required' => false,
+
+        /*
+        |--------------------------------------------------------------------------
+        | Keep Existing Frontend Contract
+        |--------------------------------------------------------------------------
+        */
+
+        'token' => $result['token'],
+
+        'token_type' => 'bearer',
+
+        'expires_in' => auth('api')
+            ->factory()
+            ->getTTL() * 60,
+
+        'user' => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'status' => $user->status,
+
+            'is_platform_owner' =>
+                $user->is_platform_owner,
+        ],
+    ]);
+}
 
     /*
     |--------------------------------------------------------------------------
