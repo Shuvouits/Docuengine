@@ -22,11 +22,11 @@ class EnsureActiveAuthSession
     ): Response {
         /*
         |--------------------------------------------------------------------------
-        | Authenticated User
+        | Authenticated API User
         |--------------------------------------------------------------------------
         */
 
-        $user = $request->user();
+        $user = $request->user('api');
 
         if (!$user) {
             return response()->json([

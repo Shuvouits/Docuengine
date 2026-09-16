@@ -6,12 +6,50 @@ use App\Models\Tenant;
 
 class TenantConfigurationRepository
 {
-    public function getConfiguration(Tenant $tenant): Tenant
-    {
+    public function getConfiguration(
+        Tenant $tenant
+    ): Tenant {
+        /*
+        |--------------------------------------------------------------------------
+        | Sync Registered Feature Flags
+        |--------------------------------------------------------------------------
+        */
+
+        $this->syncFeatureFlags($tenant);
+
+        $registeredFlags = array_keys(
+            config(
+                'docuengine.feature_flags',
+                []
+            )
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Load Tenant Configuration
+        |--------------------------------------------------------------------------
+        */
+
         return $tenant->load([
             'settings',
             'branding',
-            'featureFlags',
+
+            'featureFlags' => function ($query) use (
+                $registeredFlags
+            ) {
+                if (empty($registeredFlags)) {
+                    $query->whereRaw('1 = 0');
+
+                    return;
+                }
+
+                $query
+                    ->whereIn(
+                        'key',
+                        $registeredFlags
+                    )
+                    ->orderBy('key');
+            },
         ]);
     }
 
@@ -28,7 +66,8 @@ class TenantConfigurationRepository
         Tenant $tenant,
         array $data
     ) {
-        return $tenant->settings()
+        return $tenant
+            ->settings()
             ->updateOrCreate(
                 [
                     'tenant_id' => $tenant->id,
@@ -41,7 +80,8 @@ class TenantConfigurationRepository
         Tenant $tenant,
         array $data
     ) {
-        return $tenant->branding()
+        return $tenant
+            ->branding()
             ->updateOrCreate(
                 [
                     'tenant_id' => $tenant->id,
@@ -55,12 +95,46 @@ class TenantConfigurationRepository
         string $key,
         array $data
     ) {
-        return $tenant->featureFlags()
+        return $tenant
+            ->featureFlags()
             ->updateOrCreate(
                 [
                     'key' => $key,
                 ],
                 $data
             );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Sync Feature Registry With Tenant
+    |--------------------------------------------------------------------------
+    */
+
+    private function syncFeatureFlags(
+        Tenant $tenant
+    ): void {
+        $registeredFlags = config(
+            'docuengine.feature_flags',
+            []
+        );
+
+        foreach (
+            $registeredFlags as $key => $defaultEnabled
+        ) {
+            $tenant
+                ->featureFlags()
+                ->firstOrCreate(
+                    [
+                        'key' => $key,
+                    ],
+                    [
+                        'enabled' =>
+                            (bool) $defaultEnabled,
+
+                        'config' => [],
+                    ]
+                );
+        }
     }
 }

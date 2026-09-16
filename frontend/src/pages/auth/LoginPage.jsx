@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+
 import api from "../../api/axios";
+import { resolvePostLoginPath } from "../../utils/authRedirect";
 
 
 const LoginPage = () => {
@@ -34,87 +36,182 @@ const LoginPage = () => {
     */
 
     const handleSubmit = async (e) => {
-        e.preventDefault();
+    e.preventDefault();
 
-        setError("");
+    setError("");
+
+    if (!email.trim()) {
+        setError("Please enter your email address.");
+        return;
+    }
+
+    if (!password) {
+        setError("Please enter your password.");
+        return;
+    }
+
+    setLoading(true);
+
+    try {
+        const response = await api.post(
+            "/auth/login",
+            {
+                email: email.trim(),
+                password,
+            }
+        );
+
+        const data = response.data || {};
 
         /*
         |--------------------------------------------------------------------------
-        | Basic Validation
+        | MFA Required
         |--------------------------------------------------------------------------
         */
 
-        if (!email.trim()) {
-            setError("Please enter your email address.");
+        if (
+            data.mfa_required === true &&
+            data.challenge_token
+        ) {
+            sessionStorage.setItem(
+                "mfa_challenge_token",
+                data.challenge_token
+            );
+
+            sessionStorage.setItem(
+                "mfa_challenge_expires_at",
+                data.expires_at || ""
+            );
+
+            sessionStorage.setItem(
+                "mfa_login_email",
+                email.trim()
+            );
+
+            navigate(
+                "/two-factor-challenge",
+                {
+                    replace: true,
+                }
+            );
+
             return;
         }
 
-        if (!password) {
-            setError("Please enter your password.");
-            return;
-        }
+        /*
+        |--------------------------------------------------------------------------
+        | Normal Login Without MFA
+        |--------------------------------------------------------------------------
+        */
 
-        setLoading(true);
-
-        try {
+        if (data.token) {
             /*
             |--------------------------------------------------------------------------
-            | Login API
+            | Store JWT First
             |--------------------------------------------------------------------------
+            |
+            | Important:
+            | /auth/me requires this token.
+            |
             */
 
-            const response = await api.post("/auth/login", {
-                email: email.trim(),
-                password,
-            });
-
-            const token = response.data?.token;
-
-            if (!token) {
-                setError("Authentication token was not received.");
-                return;
-            }
+            localStorage.setItem(
+                "token",
+                data.token
+            );
 
             /*
             |--------------------------------------------------------------------------
-            | Store JWT Token
+            | Load Module 2 Access Context
             |--------------------------------------------------------------------------
             */
 
-            localStorage.setItem("token", token);
+            const meResponse = await api.get(
+                "/auth/me"
+            );
+
+            const authData =
+                meResponse.data?.data || null;
 
             /*
             |--------------------------------------------------------------------------
-            | Redirect to Admin Dashboard
+            | Smart Redirect
             |--------------------------------------------------------------------------
             */
 
-            navigate("/admin/dashboard", {
-                replace: true,
-            });
-
-        } catch (error) {
-            /*
-            |--------------------------------------------------------------------------
-            | API Error Handling
-            |--------------------------------------------------------------------------
-            */
-
-            if (error.response?.status === 401) {
-                setError("Invalid email or password.");
-            } else if (error.response?.data?.message) {
-                setError(error.response.data.message);
-            } else if (error.request) {
-                setError(
-                    "Unable to connect to the server. Please try again."
+            const destination =
+                resolvePostLoginPath(
+                    authData
                 );
-            } else {
-                setError("Something went wrong. Please try again.");
-            }
-        } finally {
-            setLoading(false);
+
+            navigate(
+                destination,
+                {
+                    replace: true,
+                }
+            );
+
+            return;
         }
-    };
+
+        setError(
+            "Unable to complete authentication. Please try again."
+        );
+    } catch (error) {
+        /*
+        |--------------------------------------------------------------------------
+        | Cleanup Failed Authentication
+        |--------------------------------------------------------------------------
+        |
+        | If JWT was issued but /auth/me failed, don't leave
+        | a stale token in localStorage.
+        |
+        */
+
+        if (
+            error.config?.url?.includes(
+                "/auth/me"
+            )
+        ) {
+            localStorage.removeItem(
+                "token"
+            );
+        }
+
+        if (
+            error.response?.status === 401
+        ) {
+            setError(
+                "Invalid email or password."
+            );
+        } else if (
+            error.response?.status === 403
+        ) {
+            setError(
+                error.response?.data?.message ||
+                    "Your account does not have access."
+            );
+        } else if (
+            error.response?.data?.message
+        ) {
+            setError(
+                error.response.data.message
+            );
+        } else if (
+            error.request
+        ) {
+            setError(
+                "Unable to connect to the server. Please try again."
+            );
+        } else {
+            setError(
+                "Something went wrong. Please try again."
+            );
+        }
+    } finally {
+        setLoading(false);
+    }
+};
 
     return (
         <div className="min-h-screen bg-[#07111f] flex items-center justify-center px-4 py-10">

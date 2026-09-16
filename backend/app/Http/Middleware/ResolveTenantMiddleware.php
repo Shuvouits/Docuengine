@@ -21,7 +21,13 @@ class ResolveTenantMiddleware
         Closure $next,
         string $parameter = 'tenantId'
     ): Response {
-        $user = $request->user();
+        /*
+        |--------------------------------------------------------------------------
+        | Authenticated API User
+        |--------------------------------------------------------------------------
+        */
+
+        $user = $request->user('api');
 
         if (!$user) {
             return response()->json([
@@ -29,11 +35,23 @@ class ResolveTenantMiddleware
             ], 401);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Validate User Status
+        |--------------------------------------------------------------------------
+        */
+
         if (!$user->isActive()) {
             return response()->json([
                 'message' => 'Your account is not active.',
             ], 403);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Resolve Tenant ID From Route
+        |--------------------------------------------------------------------------
+        */
 
         $tenantId = $request->route($parameter);
 
@@ -42,6 +60,12 @@ class ResolveTenantMiddleware
                 'message' => 'Tenant context is required.',
             ], 400);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Find Tenant
+        |--------------------------------------------------------------------------
+        */
 
         $tenant = Tenant::query()
             ->whereKey($tenantId)
@@ -53,11 +77,23 @@ class ResolveTenantMiddleware
             ], 404);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Validate Tenant Status
+        |--------------------------------------------------------------------------
+        */
+
         if (!$tenant->isActive()) {
             return response()->json([
                 'message' => 'Tenant is not active.',
             ], 403);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Validate Tenant Membership
+        |--------------------------------------------------------------------------
+        */
 
         if (!$user->isPlatformOwner()) {
             $hasAccess = $user->tenantMemberships()
@@ -84,10 +120,6 @@ class ResolveTenantMiddleware
         |--------------------------------------------------------------------------
         | Set Spatie Permission Tenant Context
         |--------------------------------------------------------------------------
-        |
-        | From this point onward, role and permission checks will use
-        | the currently resolved tenant.
-        |
         */
 
         app(PermissionRegistrar::class)
@@ -97,10 +129,6 @@ class ResolveTenantMiddleware
         |--------------------------------------------------------------------------
         | Clear Cached User Permission Relations
         |--------------------------------------------------------------------------
-        |
-        | Important when the same authenticated user may access more than one
-        | tenant during its lifetime.
-        |
         */
 
         $user->unsetRelation('roles');
