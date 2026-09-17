@@ -19,6 +19,8 @@ import {
     Network,
     Monitor,
     Lock,
+    ScrollText,
+    Archive,
 } from "lucide-react";
 
 function AdminSidebar({
@@ -37,6 +39,12 @@ function AdminSidebar({
     const isPlatformOwner =
         Boolean(user?.is_platform_owner);
 
+    /*
+    |--------------------------------------------------------------------------
+    | Roles & Permissions
+    |--------------------------------------------------------------------------
+    */
+
     const tenantRoles =
         currentTenant?.access?.roles || [];
 
@@ -52,6 +60,92 @@ function AdminSidebar({
     const isTenantAdmin =
         hasRole("MSP Admin") ||
         currentTenant?.membership?.role === "admin";
+
+    /*
+    |--------------------------------------------------------------------------
+    | Feature Flags
+    |--------------------------------------------------------------------------
+    */
+
+    const featureFlags =
+        currentTenant?.feature_flags || {};
+
+    const isFeatureEnabled = (key) => {
+        if (Array.isArray(featureFlags)) {
+            const feature =
+                featureFlags.find((item) => {
+                    if (typeof item === "string") {
+                        return item === key;
+                    }
+
+                    return (
+                        item?.key === key ||
+                        item?.name === key ||
+                        item?.slug === key
+                    );
+                });
+
+            if (!feature) {
+                return false;
+            }
+
+            if (typeof feature === "string") {
+                return true;
+            }
+
+            return Boolean(
+                feature.enabled ??
+                    feature.is_enabled ??
+                    feature.value
+            );
+        }
+
+        if (
+            featureFlags &&
+            typeof featureFlags === "object"
+        ) {
+            const feature =
+                featureFlags[key];
+
+            if (typeof feature === "boolean") {
+                return feature;
+            }
+
+            if (typeof feature === "number") {
+                return feature === 1;
+            }
+
+            if (typeof feature === "string") {
+                return [
+                    "1",
+                    "true",
+                    "enabled",
+                    "on",
+                ].includes(
+                    feature.toLowerCase()
+                );
+            }
+
+            if (
+                feature &&
+                typeof feature === "object"
+            ) {
+                return Boolean(
+                    feature.enabled ??
+                        feature.is_enabled ??
+                        feature.value
+                );
+            }
+        }
+
+        return false;
+    };
+
+    /*
+    |--------------------------------------------------------------------------
+    | Organization Branding
+    |--------------------------------------------------------------------------
+    */
 
     const branding =
         currentTenant?.branding || null;
@@ -75,6 +169,60 @@ function AdminSidebar({
         currentTenant?.membership?.role ||
         null;
 
+    /*
+    |--------------------------------------------------------------------------
+    | Sidebar Appearance
+    |--------------------------------------------------------------------------
+    */
+
+    const sidebarStyle = String(
+        branding?.custom_styles?.sidebar_style ||
+            "dark"
+    ).toLowerCase();
+
+    const isLightSidebar =
+        sidebarStyle === "light";
+
+    const isBrandSidebar =
+        [
+            "brand",
+            "branded",
+            "primary",
+        ].includes(sidebarStyle);
+
+    const sidebarBackground =
+        isLightSidebar
+            ? "#ffffff"
+            : isBrandSidebar
+              ? "color-mix(in srgb, var(--brand-primary) 72%, #07111f)"
+              : "#07111f";
+
+    const sidebarBorderClass =
+        isLightSidebar
+            ? "border-slate-200"
+            : "border-white/10";
+
+    const primaryTextClass =
+        isLightSidebar
+            ? "text-slate-900"
+            : "text-white";
+
+    const secondaryTextClass =
+        isLightSidebar
+            ? "text-slate-500"
+            : "text-slate-400";
+
+    const mutedTextClass =
+        isLightSidebar
+            ? "text-slate-400"
+            : "text-slate-500";
+
+    /*
+    |--------------------------------------------------------------------------
+    | Platform
+    |--------------------------------------------------------------------------
+    */
+
     const platformItems = [
         ...(isPlatformOwner || isTenantAdmin
             ? [
@@ -97,6 +245,12 @@ function AdminSidebar({
               ]
             : []),
     ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Organization
+    |--------------------------------------------------------------------------
+    */
 
     const organizationItems = currentTenant
         ? [
@@ -143,6 +297,12 @@ function AdminSidebar({
           ]
         : [];
 
+    /*
+    |--------------------------------------------------------------------------
+    | Identity & Access
+    |--------------------------------------------------------------------------
+    */
+
     const identityAccessItems = currentTenant
         ? [
               ...(can("users.view")
@@ -185,41 +345,98 @@ function AdminSidebar({
                     ]
                   : []),
 
-              ...(can("access_reviews.view")
-                  ? [
-                        {
-                            label: "Access Reviews",
-                            path: "/admin/access-reviews",
-                            icon: ClipboardCheck,
-                        },
-                    ]
-                  : []),
+              ...(
+                  can("access_reviews.view") &&
+                  isFeatureEnabled(
+                      "access_reviews"
+                  )
+                      ? [
+                            {
+                                label: "Access Reviews",
+                                path: "/admin/access-reviews",
+                                icon: ClipboardCheck,
+                            },
+                        ]
+                      : []
+              ),
           ]
         : [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Security
+    |--------------------------------------------------------------------------
+    */
 
     const tenantSecurityItems = currentTenant
         ? [
-              ...(can("security.events.view")
+              ...(
+                  can("security.events.view") &&
+                  isFeatureEnabled(
+                      "security_events"
+                  )
+                      ? [
+                            {
+                                label: "Security Events",
+                                path: "/admin/security-events",
+                                icon: Activity,
+                            },
+                        ]
+                      : []
+              ),
+
+              ...(
+                  can(
+                      "security.ip_allowlist.view"
+                  ) &&
+                  isFeatureEnabled("ip_access")
+                      ? [
+                            {
+                                label: "IP Access",
+                                path: "/admin/ip-access",
+                                icon: Network,
+                            },
+                        ]
+                      : []
+              ),
+          ]
+        : [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Audit & Archive
+    |--------------------------------------------------------------------------
+    */
+
+    const auditArchiveItems = currentTenant
+        ? [
+              ...(can("audit.view")
                   ? [
                         {
-                            label: "Security Events",
-                            path: "/admin/security-events",
-                            icon: Activity,
+                            label: "Audit Logs",
+                            path: "/admin/audit-logs",
+                            icon: ScrollText,
                         },
                     ]
                   : []),
 
-              ...(can("security.ip_allowlist.view")
+              ...(can("archive.view")
                   ? [
                         {
-                            label: "IP Access",
-                            path: "/admin/ip-access",
-                            icon: Network,
+                            label: "Museum",
+                            path: "/admin/museum",
+                            icon: Archive,
                         },
                     ]
                   : []),
           ]
         : [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Account Security
+    |--------------------------------------------------------------------------
+    */
 
     const accountSecurityItems = user
         ? [
@@ -235,6 +452,12 @@ function AdminSidebar({
               },
           ]
         : [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Logout
+    |--------------------------------------------------------------------------
+    */
 
     const handleLogout = () => {
         localStorage.removeItem("token");
@@ -258,6 +481,12 @@ function AdminSidebar({
         });
     };
 
+    /*
+    |--------------------------------------------------------------------------
+    | Navigation Item
+    |--------------------------------------------------------------------------
+    */
+
     const renderNavItem = (item) => {
         const Icon = item.icon;
 
@@ -275,10 +504,32 @@ function AdminSidebar({
                     transition-all duration-200
                     ${
                         isActive
-                            ? "bg-[#19b5fe]/10 text-[#19b5fe] shadow-sm"
-                            : "text-slate-400 hover:bg-white/5 hover:text-white"
+                            ? "shadow-sm"
+                            : isLightSidebar
+                              ? "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                              : "text-slate-400 hover:bg-white/5 hover:text-white"
                     }
                 `}
+                style={({ isActive }) => {
+                    if (!isActive) {
+                        return undefined;
+                    }
+
+                    if (isBrandSidebar) {
+                        return {
+                            color: "#ffffff",
+                            backgroundColor:
+                                "rgba(255,255,255,0.12)",
+                        };
+                    }
+
+                    return {
+                        color:
+                            "var(--brand-primary)",
+                        backgroundColor:
+                            "color-mix(in srgb, var(--brand-primary) 10%, transparent)",
+                    };
+                }}
             >
                 {({ isActive }) => (
                     <>
@@ -290,10 +541,22 @@ function AdminSidebar({
                                 transition-colors duration-200
                                 ${
                                     isActive
-                                        ? "text-[#19b5fe]"
-                                        : "text-slate-500 group-hover:text-white"
+                                        ? ""
+                                        : isLightSidebar
+                                          ? "text-slate-400 group-hover:text-slate-700"
+                                          : "text-slate-500 group-hover:text-white"
                                 }
                             `}
+                            style={
+                                isActive
+                                    ? {
+                                          color:
+                                              isBrandSidebar
+                                                  ? "#ffffff"
+                                                  : "var(--brand-primary)",
+                                      }
+                                    : undefined
+                            }
                         />
 
                         <span className="truncate">
@@ -301,7 +564,15 @@ function AdminSidebar({
                         </span>
 
                         {isActive && (
-                            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#19b5fe]" />
+                            <span
+                                className="ml-auto h-1.5 w-1.5 rounded-full"
+                                style={{
+                                    backgroundColor:
+                                        isBrandSidebar
+                                            ? "#ffffff"
+                                            : "var(--brand-primary)",
+                                }}
+                            />
                         )}
                     </>
                 )}
@@ -309,7 +580,16 @@ function AdminSidebar({
         );
     };
 
-    const renderSection = (title, items) => {
+    /*
+    |--------------------------------------------------------------------------
+    | Navigation Section
+    |--------------------------------------------------------------------------
+    */
+
+    const renderSection = (
+        title,
+        items
+    ) => {
         if (!items.length) {
             return null;
         }
@@ -317,13 +597,17 @@ function AdminSidebar({
         return (
             <div className="mb-6">
                 <div className="px-4 pb-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    <p
+                        className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${mutedTextClass}`}
+                    >
                         {title}
                     </p>
                 </div>
 
                 <div className="space-y-1">
-                    {items.map(renderNavItem)}
+                    {items.map(
+                        renderNavItem
+                    )}
                 </div>
             </div>
         );
@@ -342,10 +626,10 @@ function AdminSidebar({
                 className={`
                     fixed left-0 top-0 z-50
                     flex h-screen w-[270px] flex-col
-                    border-r border-white/10
-                    bg-[#07111f]
-                    shadow-2xl shadow-black/20
-                    transition-transform duration-300
+                    border-r
+                    ${sidebarBorderClass}
+                    shadow-2xl shadow-black/10
+                    transition-all duration-300
                     lg:translate-x-0
                     ${
                         mobileOpen
@@ -353,32 +637,65 @@ function AdminSidebar({
                             : "-translate-x-full"
                     }
                 `}
+                style={{
+                    backgroundColor:
+                        sidebarBackground,
+                }}
             >
-                <div className="flex h-[82px] shrink-0 items-center justify-between border-b border-white/10 px-6">
+                {/* Logo */}
+
+                <div
+                    className={`
+                        flex h-[82px] shrink-0
+                        items-center justify-between
+                        border-b px-6
+                        ${sidebarBorderClass}
+                    `}
+                >
                     <NavLink
                         to={
-                            isPlatformOwner || isTenantAdmin
+                            isPlatformOwner ||
+                            isTenantAdmin
                                 ? "/admin/dashboard"
                                 : "/admin/sessions"
                         }
                         onClick={onClose}
                         className="group flex items-center gap-3"
                     >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#19b5fe] to-[#7c3aed] shadow-lg shadow-[#19b5fe]/20 transition-transform duration-300 group-hover:scale-105">
-                            <span className="text-xl font-bold text-white">
+                        <div
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-lg transition-transform duration-300 group-hover:scale-105"
+                            style={{
+                                background:
+                                    "linear-gradient(135deg, var(--brand-primary), #7c3aed)",
+                                boxShadow:
+                                    "0 10px 25px color-mix(in srgb, var(--brand-primary) 25%, transparent)",
+                            }}
+                        >
+                            <span className="text-xl font-bold">
                                 D
                             </span>
                         </div>
 
                         <div>
-                            <h1 className="text-[21px] font-bold tracking-tight text-white">
+                            <h1
+                                className={`text-[21px] font-bold tracking-tight ${primaryTextClass}`}
+                            >
                                 Docu
-                                <span className="text-[#19b5fe]">
+                                <span
+                                    style={{
+                                        color:
+                                            isBrandSidebar
+                                                ? "#ffffff"
+                                                : "var(--brand-primary)",
+                                    }}
+                                >
                                     Engine
                                 </span>
                             </h1>
 
-                            <p className="text-[10px] tracking-wide text-slate-400">
+                            <p
+                                className={`text-[10px] tracking-wide ${secondaryTextClass}`}
+                            >
                                 IT Documentation Platform
                             </p>
                         </div>
@@ -387,12 +704,21 @@ function AdminSidebar({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-slate-400 transition hover:text-white lg:hidden"
+                        className={`
+                            transition lg:hidden
+                            ${
+                                isLightSidebar
+                                    ? "text-slate-500 hover:text-slate-900"
+                                    : "text-slate-400 hover:text-white"
+                            }
+                        `}
                         aria-label="Close sidebar"
                     >
                         <X size={21} />
                     </button>
                 </div>
+
+                {/* Navigation */}
 
                 <div className="flex-1 overflow-y-auto px-4 py-6">
                     {renderSection(
@@ -416,47 +742,123 @@ function AdminSidebar({
                     )}
 
                     {renderSection(
+                        "Audit & Archive",
+                        auditArchiveItems
+                    )}
+
+                    {renderSection(
                         "Account Security",
                         accountSecurityItems
                     )}
                 </div>
 
+                {/* Current Organization */}
+
                 <div className="shrink-0 px-4 pb-4">
                     {authLoading ? (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <div
+                            className={`
+                                rounded-2xl border p-4
+                                ${
+                                    isLightSidebar
+                                        ? "border-slate-200 bg-slate-50"
+                                        : "border-white/10 bg-white/[0.03]"
+                                }
+                            `}
+                        >
                             <div className="animate-pulse">
                                 <div className="flex items-center gap-3">
-                                    <div className="h-10 w-10 rounded-xl bg-white/10" />
+                                    <div
+                                        className={`
+                                            h-10 w-10 rounded-xl
+                                            ${
+                                                isLightSidebar
+                                                    ? "bg-slate-200"
+                                                    : "bg-white/10"
+                                            }
+                                        `}
+                                    />
 
                                     <div className="flex-1">
-                                        <div className="h-3 w-28 rounded bg-white/10" />
-                                        <div className="mt-2 h-2.5 w-20 rounded bg-white/10" />
+                                        <div
+                                            className={`
+                                                h-3 w-28 rounded
+                                                ${
+                                                    isLightSidebar
+                                                        ? "bg-slate-200"
+                                                        : "bg-white/10"
+                                                }
+                                            `}
+                                        />
+
+                                        <div
+                                            className={`
+                                                mt-2 h-2.5 w-20 rounded
+                                                ${
+                                                    isLightSidebar
+                                                        ? "bg-slate-200"
+                                                        : "bg-white/10"
+                                                }
+                                            `}
+                                        />
                                     </div>
                                 </div>
                             </div>
                         </div>
                     ) : currentTenant ? (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <div
+                            className={`
+                                rounded-2xl border p-4
+                                ${
+                                    isLightSidebar
+                                        ? "border-slate-200 bg-slate-50"
+                                        : "border-white/10 bg-white/[0.03]"
+                                }
+                            `}
+                        >
                             <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-white">
+                                <div
+                                    className={`
+                                        flex h-11 w-11 shrink-0
+                                        items-center justify-center
+                                        overflow-hidden rounded-xl
+                                        border bg-white
+                                        ${
+                                            isLightSidebar
+                                                ? "border-slate-200"
+                                                : "border-white/10"
+                                        }
+                                    `}
+                                >
                                     {organizationLogo ? (
                                         <img
-                                            src={organizationLogo}
+                                            src={
+                                                organizationLogo
+                                            }
                                             alt={`${organizationName} logo`}
                                             className="h-full w-full object-contain p-1.5"
                                         />
                                     ) : (
                                         <Building2
                                             size={20}
-                                            strokeWidth={1.8}
-                                            className="text-[#19b5fe]"
+                                            strokeWidth={
+                                                1.8
+                                            }
+                                            style={{
+                                                color:
+                                                    "var(--brand-primary)",
+                                            }}
                                         />
                                     )}
                                 </div>
 
                                 <div className="min-w-0 flex-1">
-                                    <p className="truncate text-xs font-semibold text-white">
-                                        {organizationName}
+                                    <p
+                                        className={`truncate text-xs font-semibold ${primaryTextClass}`}
+                                    >
+                                        {
+                                            organizationName
+                                        }
                                     </p>
 
                                     <div className="mt-1 flex items-center gap-1.5">
@@ -464,65 +866,131 @@ function AdminSidebar({
                                             className={`
                                                 h-1.5 w-1.5 rounded-full
                                                 ${
-                                                    tenantStatus === "active"
+                                                    tenantStatus ===
+                                                    "active"
                                                         ? "bg-emerald-400"
                                                         : "bg-amber-400"
                                                 }
                                             `}
                                         />
 
-                                        <span className="capitalize text-[10px] text-slate-400">
-                                            {tenantStatus || "Unknown"}
+                                        <span
+                                            className={`capitalize text-[10px] ${secondaryTextClass}`}
+                                        >
+                                            {tenantStatus ||
+                                                "Unknown"}
                                         </span>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="mt-4 border-t border-white/10 pt-3">
+                            <div
+                                className={`
+                                    mt-4 border-t pt-3
+                                    ${
+                                        isLightSidebar
+                                            ? "border-slate-200"
+                                            : "border-white/10"
+                                    }
+                                `}
+                            >
                                 {tenantTimezone && (
                                     <div className="flex items-center justify-between">
-                                        <span className="text-[10px] text-slate-500">
+                                        <span
+                                            className={`text-[10px] ${mutedTextClass}`}
+                                        >
                                             Timezone
                                         </span>
 
-                                        <span className="max-w-[130px] truncate text-[10px] font-medium text-slate-300">
-                                            {tenantTimezone}
+                                        <span
+                                            className={`
+                                                max-w-[130px]
+                                                truncate text-[10px]
+                                                font-medium
+                                                ${
+                                                    isLightSidebar
+                                                        ? "text-slate-700"
+                                                        : "text-slate-300"
+                                                }
+                                            `}
+                                        >
+                                            {
+                                                tenantTimezone
+                                            }
                                         </span>
                                     </div>
                                 )}
 
                                 {tenantRole && (
                                     <div className="mt-2 flex items-center justify-between">
-                                        <span className="text-[10px] text-slate-500">
+                                        <span
+                                            className={`text-[10px] ${mutedTextClass}`}
+                                        >
                                             Access
                                         </span>
 
                                         <span
-                                            className="max-w-[140px] truncate text-right text-[10px] font-medium text-slate-300"
-                                            title={tenantRole}
+                                            className={`
+                                                max-w-[140px]
+                                                truncate text-right
+                                                text-[10px]
+                                                font-medium
+                                                ${
+                                                    isLightSidebar
+                                                        ? "text-slate-700"
+                                                        : "text-slate-300"
+                                                }
+                                            `}
+                                            title={
+                                                tenantRole
+                                            }
                                         >
-                                            {tenantRole}
+                                            {
+                                                tenantRole
+                                            }
                                         </span>
                                     </div>
                                 )}
                             </div>
                         </div>
                     ) : isPlatformOwner ? (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <div
+                            className={`
+                                rounded-2xl border p-4
+                                ${
+                                    isLightSidebar
+                                        ? "border-slate-200 bg-slate-50"
+                                        : "border-white/10 bg-white/[0.03]"
+                                }
+                            `}
+                        >
                             <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#19b5fe]/10">
+                                <div
+                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                                    style={{
+                                        backgroundColor:
+                                            "color-mix(in srgb, var(--brand-primary) 10%, transparent)",
+                                    }}
+                                >
                                     <Building2
                                         size={18}
-                                        className="text-[#19b5fe]"
+                                        style={{
+                                            color:
+                                                "var(--brand-primary)",
+                                        }}
                                     />
                                 </div>
 
                                 <div>
-                                    <p className="text-xs font-semibold text-white">
+                                    <p
+                                        className={`text-xs font-semibold ${primaryTextClass}`}
+                                    >
                                         Platform Administration
                                     </p>
 
-                                    <p className="mt-1 text-[10px] text-slate-500">
+                                    <p
+                                        className={`mt-1 text-[10px] ${secondaryTextClass}`}
+                                    >
                                         No MSP selected
                                     </p>
                                 </div>
@@ -531,25 +999,60 @@ function AdminSidebar({
                     ) : null}
                 </div>
 
+                {/* User */}
+
                 {!authLoading && user && (
-                    <div className="border-t border-white/10 px-4 pt-4">
+                    <div
+                        className={`
+                            border-t px-4 pt-4
+                            ${sidebarBorderClass}
+                        `}
+                    >
                         <div className="px-4 pb-3">
-                            <p className="truncate text-xs font-semibold text-slate-300">
+                            <p
+                                className={`
+                                    truncate text-xs font-semibold
+                                    ${
+                                        isLightSidebar
+                                            ? "text-slate-700"
+                                            : "text-slate-300"
+                                    }
+                                `}
+                            >
                                 {user.name}
                             </p>
 
-                            <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                            <p
+                                className={`
+                                    mt-0.5 truncate text-[10px]
+                                    ${mutedTextClass}
+                                `}
+                            >
                                 {user.email}
                             </p>
                         </div>
                     </div>
                 )}
 
+                {/* Logout */}
+
                 <div className="shrink-0 px-4 pb-4">
                     <button
                         type="button"
                         onClick={handleLogout}
-                        className="group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-slate-400 transition-all duration-200 hover:bg-red-500/10 hover:text-red-400"
+                        className={`
+                            group flex w-full items-center
+                            gap-3 rounded-xl px-4 py-3
+                            text-sm font-medium
+                            transition-all duration-200
+                            hover:bg-red-500/10
+                            hover:text-red-500
+                            ${
+                                isLightSidebar
+                                    ? "text-slate-600"
+                                    : "text-slate-400"
+                            }
+                        `}
                     >
                         <LogOut
                             size={18}

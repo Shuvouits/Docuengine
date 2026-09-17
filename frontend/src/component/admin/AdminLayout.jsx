@@ -81,13 +81,60 @@ function AdminLayout({ children }) {
 
     /*
     |--------------------------------------------------------------------------
+    | Tenant Branding Variables
+    |--------------------------------------------------------------------------
+    */
+
+    useEffect(() => {
+        if (
+            authLoading ||
+            !authData?.current_tenant
+        ) {
+            return;
+        }
+
+        const branding =
+            authData.current_tenant.branding ||
+            null;
+
+        const primaryColor =
+            branding?.primary_color ||
+            "#19b5fe";
+
+        const secondaryColor =
+            branding?.secondary_color ||
+            "#F4F7F5";
+
+        document.documentElement.style.setProperty(
+            "--brand-primary",
+            primaryColor
+        );
+
+        document.documentElement.style.setProperty(
+            "--brand-secondary",
+            secondaryColor
+        );
+    }, [
+        authLoading,
+        authData?.current_tenant?.id,
+        authData?.current_tenant?.branding?.primary_color,
+        authData?.current_tenant?.branding?.secondary_color,
+    ]);
+
+    /*
+    |--------------------------------------------------------------------------
     | Layout
     |--------------------------------------------------------------------------
     */
 
     return (
-        <div className="min-h-screen bg-[#f8fafc]">
-
+        <div
+            className="min-h-screen"
+            style={{
+                backgroundColor:
+                    "var(--brand-secondary)",
+            }}
+        >
             {/* Sidebar */}
 
             <AdminSidebar
@@ -102,7 +149,6 @@ function AdminLayout({ children }) {
             {/* Main Area */}
 
             <div className="min-h-screen lg:pl-[270px]">
-
                 {/* Topbar */}
 
                 <AdminTopbar
@@ -115,26 +161,25 @@ function AdminLayout({ children }) {
 
                 {/* Page Content */}
 
-                <main className="p-5 lg:p-8">
-
+                <main
+                    className="min-h-[calc(100vh-80px)] p-5 lg:p-8"
+                    style={{
+                        backgroundColor:
+                            "var(--brand-secondary)",
+                    }}
+                >
                     <div className="mx-auto max-w-[1600px]">
-
                         {isValidElement(children)
                             ? cloneElement(children, {
-                                  authData,
-                                  authLoading,
-
-                                  refreshAuth: () =>
-                                      loadAuthUser(false),
-                              })
+                                authData,
+                                authLoading,
+                                refreshAuth: () =>
+                                    loadAuthUser(false),
+                            })
                             : children}
-
                     </div>
-
                 </main>
-
             </div>
-
         </div>
     );
 }

@@ -39,6 +39,8 @@ import AccessReviewsPage from "./pages/backend/access-reviews/AccessReviewsPage"
 import SecurityEventsPage from "./pages/backend/security-events/SecurityEventsPage";
 import IpAccessPage from "./pages/backend/ip-access/IpAccessPage";
 import TenantDetailsPage from "./pages/backend/tenants/TenantDetailsPage";
+import AuditLogsPage from "./pages/backend/audit-logs/AuditLogsPage";
+import MuseumPage from "./pages/backend/museum/MuseumPage";
 
 function App() {
     return (
@@ -143,6 +145,19 @@ function App() {
 
                     <Route path="/admin/mfa" element={<AdminLayout><MfaRecoveryPage /></AdminLayout>} />
                     <Route path="/admin/sessions" element={<AdminLayout><ActiveSessionsPage /></AdminLayout>} />
+
+
+                    {/* AUDIT LOGS */}
+
+                    <Route element={<PermissionRoute permission="audit.view" />}>
+                        <Route path="/admin/audit-logs" element={<AdminLayout><AuditLogsPage /></AdminLayout>} />
+                    </Route>
+
+                    {/* MUSEUM / ARCHIVE */}
+
+                    <Route element={<PermissionRoute permission="archive.view" />}>
+                        <Route path="/admin/museum" element={<AdminLayout><MuseumPage /></AdminLayout>} />
+                    </Route>
 
                 </Route>
 
