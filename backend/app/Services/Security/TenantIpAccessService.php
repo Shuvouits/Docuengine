@@ -2,17 +2,21 @@
 
 namespace App\Services\Security;
 
+use App\Models\AuditEvent;
 use App\Models\TenantIpAccessPolicy;
 use App\Models\TenantIpAllowlistEntry;
 use App\Models\User;
 use App\Repositories\TenantIpAccessRepository;
+use App\Services\Audit\AuditEventService;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class TenantIpAccessService
 {
     public function __construct(
-        private TenantIpAccessRepository $tenantIpAccessRepository
+        private TenantIpAccessRepository $tenantIpAccessRepository,
+        private AuditEventService $auditEventService
     ) {
     }
 
@@ -26,50 +30,99 @@ class TenantIpAccessService
             );
 
         return [
-            'enabled' =>
-                $policy?->enabled ?? false,
-
-            'updated_by' =>
-                $policy?->updated_by,
-
-            'updated_at' =>
-                $policy?->updated_at,
+            'enabled' => $policy?->enabled ?? false,
+            'updated_by' => $policy?->updated_by,
+            'updated_at' => $policy?->updated_at,
         ];
     }
 
-   public function updatePolicy(
-    string $tenantId,
-    bool $enabled,
-    User $actor,
-    ?string $requestIp = null
-): TenantIpAccessPolicy {
-    if ($enabled) {
-        if (
-            !$this
-                ->tenantIpAccessRepository
-                ->hasActiveEntries($tenantId)
-        ) {
-            throw new DomainException(
-                'Add at least one active IP allowlist entry before enabling IP restrictions.'
+    public function updatePolicy(
+        string $tenantId,
+        bool $enabled,
+        User $actor,
+        ?string $requestIp = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
+    ): TenantIpAccessPolicy {
+        $beforePolicy = $this
+            ->tenantIpAccessRepository
+            ->findPolicyByTenant(
+                $tenantId
+            );
+
+        $beforeEnabled = (bool) (
+            $beforePolicy?->enabled ?? false
+        );
+
+        if ($enabled) {
+            if (
+                !$this
+                    ->tenantIpAccessRepository
+                    ->hasActiveEntries(
+                        $tenantId
+                    )
+            ) {
+                throw new DomainException(
+                    'Add at least one active IP allowlist entry before enabling IP restrictions.'
+                );
+            }
+
+            $this->ensureCurrentIpIsAllowed(
+                $tenantId,
+                $requestIp
             );
         }
 
-        $this->ensureCurrentIpIsAllowed(
+        return DB::transaction(function () use (
             $tenantId,
-            $requestIp
-        );
-    }
+            $enabled,
+            $actor,
+            $requestIp,
+            $userAgent,
+            $requestMethod,
+            $requestPath,
+            $beforeEnabled
+        ) {
+            $policy = $this
+                ->tenantIpAccessRepository
+                ->createOrUpdatePolicy(
+                    $tenantId,
+                    [
+                        'enabled' => $enabled,
+                        'updated_by' => $actor->id,
+                    ]
+                );
 
-    return $this
-        ->tenantIpAccessRepository
-        ->createOrUpdatePolicy(
-            $tenantId,
-            [
-                'enabled' => $enabled,
-                'updated_by' => $actor->id,
-            ]
-        );
-}
+            $afterEnabled = (bool) $policy->enabled;
+
+            if ($beforeEnabled !== $afterEnabled) {
+                $this->auditEventService->record(
+                    tenantId: $tenantId,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'ip_access_policy',
+                    targetId: (string) $policy->id,
+                    targetLabel: 'IP Access Policy',
+                    description: 'IP access policy was updated.',
+                    changes: [
+                        'enabled' => [
+                            'from' => $beforeEnabled,
+                            'to' => $afterEnabled,
+                        ],
+                    ],
+                    metadata: null,
+                    ipAddress: $requestIp,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+            }
+
+            return $policy;
+        });
+    }
 
     public function listEntries(
         string $tenantId
@@ -86,7 +139,11 @@ class TenantIpAccessService
         User $actor,
         string $ipOrCidr,
         ?string $label = null,
-        bool $isActive = true
+        bool $isActive = true,
+        ?string $requestIp = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): TenantIpAllowlistEntry {
         $normalizedValue = $this
             ->normalizeIpOrCidr(
@@ -106,310 +163,459 @@ class TenantIpAccessService
             );
         }
 
-        return $this
-            ->tenantIpAccessRepository
-            ->createEntry(
-                $tenantId,
-                [
-                    'label' =>
-                        $this->normalizeLabel(
+        return DB::transaction(function () use (
+            $tenantId,
+            $actor,
+            $normalizedValue,
+            $label,
+            $isActive,
+            $requestIp,
+            $userAgent,
+            $requestMethod,
+            $requestPath
+        ) {
+            $entry = $this
+                ->tenantIpAccessRepository
+                ->createEntry(
+                    $tenantId,
+                    [
+                        'label' => $this->normalizeLabel(
                             $label
                         ),
+                        'ip_or_cidr' => $normalizedValue,
+                        'is_active' => $isActive,
+                        'created_by' => $actor->id,
+                    ]
+                );
 
-                    'ip_or_cidr' =>
-                        $normalizedValue,
-
-                    'is_active' =>
-                        $isActive,
-
-                    'created_by' =>
-                        $actor->id,
-                ]
+            $this->auditEventService->record(
+                tenantId: $tenantId,
+                actor: $actor,
+                action: AuditEvent::ACTION_CREATED,
+                category: AuditEvent::CATEGORY_ACCESS,
+                targetType: 'ip_allowlist_entry',
+                targetId: (string) $entry->id,
+                targetLabel: $entry->label
+                    ?: $entry->ip_or_cidr,
+                description: 'IP allowlist entry was created.',
+                changes: [
+                    'label' => [
+                        'from' => null,
+                        'to' => $entry->label,
+                    ],
+                    'ip_or_cidr' => [
+                        'from' => null,
+                        'to' => $entry->ip_or_cidr,
+                    ],
+                    'is_active' => [
+                        'from' => null,
+                        'to' => (bool) $entry->is_active,
+                    ],
+                ],
+                metadata: null,
+                ipAddress: $requestIp,
+                userAgent: $userAgent,
+                requestMethod: $requestMethod,
+                requestPath: $requestPath
             );
+
+            return $entry;
+        });
     }
-
-
 
     public function updateEntry(
-    string $tenantId,
-    string $entryId,
-    array $data,
-    ?string $requestIp = null
-): TenantIpAllowlistEntry {
-    $entry = $this
-        ->tenantIpAccessRepository
-        ->findEntryByTenantAndId(
-            $tenantId,
-            $entryId
-        );
-
-    if (!$entry) {
-        throw new DomainException(
-            'IP allowlist entry not found.'
-        );
-    }
-
-    $updates = [];
-
-    if (array_key_exists(
-        'ip_or_cidr',
-        $data
-    )) {
-        $normalizedValue = $this
-            ->normalizeIpOrCidr(
-                $data['ip_or_cidr']
-            );
-
-        $existing = $this
+        string $tenantId,
+        string $entryId,
+        array $data,
+        User $actor,
+        ?string $requestIp = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
+    ): TenantIpAllowlistEntry {
+        $entry = $this
             ->tenantIpAccessRepository
-            ->findEntryByTenantAndValue(
+            ->findEntryByTenantAndId(
                 $tenantId,
-                $normalizedValue
+                $entryId
             );
 
-        if (
-            $existing &&
-            $existing->id !== $entry->id
-        ) {
+        if (!$entry) {
             throw new DomainException(
-                'This IP address or CIDR range already exists in the allowlist.'
+                'IP allowlist entry not found.'
             );
         }
 
-        $updates['ip_or_cidr'] =
-            $normalizedValue;
-    }
+        $before = [
+            'label' => $entry->label,
+            'ip_or_cidr' => $entry->ip_or_cidr,
+            'is_active' => (bool) $entry->is_active,
+        ];
 
-    if (array_key_exists(
-        'label',
-        $data
-    )) {
-        $updates['label'] =
-            $this->normalizeLabel(
-                $data['label']
-            );
-    }
+        $updates = [];
 
-    if (array_key_exists(
-        'is_active',
-        $data
-    )) {
-        $updates['is_active'] =
-            (bool) $data['is_active'];
-    }
-
-    if (empty($updates)) {
-        return $entry;
-    }
-
-    $changesAccessRule =
-        $entry->is_active &&
-        (
+        if (
             array_key_exists(
                 'ip_or_cidr',
-                $updates
-            ) ||
+                $data
+            )
+        ) {
+            $normalizedValue = $this
+                ->normalizeIpOrCidr(
+                    $data['ip_or_cidr']
+                );
+
+            $existing = $this
+                ->tenantIpAccessRepository
+                ->findEntryByTenantAndValue(
+                    $tenantId,
+                    $normalizedValue
+                );
+
+            if (
+                $existing &&
+                $existing->id !== $entry->id
+            ) {
+                throw new DomainException(
+                    'This IP address or CIDR range already exists in the allowlist.'
+                );
+            }
+
+            $updates['ip_or_cidr'] =
+                $normalizedValue;
+        }
+
+        if (
+            array_key_exists(
+                'label',
+                $data
+            )
+        ) {
+            $updates['label'] =
+                $this->normalizeLabel(
+                    $data['label']
+                );
+        }
+
+        if (
+            array_key_exists(
+                'is_active',
+                $data
+            )
+        ) {
+            $updates['is_active'] =
+                (bool) $data['is_active'];
+        }
+
+        if (empty($updates)) {
+            return $entry;
+        }
+
+        $changesAccessRule =
+            $entry->is_active &&
             (
                 array_key_exists(
-                    'is_active',
+                    'ip_or_cidr',
                     $updates
-                ) &&
-                !$updates['is_active']
-            )
-        );
+                ) ||
+                (
+                    array_key_exists(
+                        'is_active',
+                        $updates
+                    ) &&
+                    !$updates['is_active']
+                )
+            );
 
-    if ($changesAccessRule) {
-        $this->ensureCurrentIpRemainsAllowed(
+        if ($changesAccessRule) {
+            $this->ensureCurrentIpRemainsAllowed(
+                $tenantId,
+                $entry,
+                $updates,
+                $requestIp
+            );
+        }
+
+        return DB::transaction(function () use (
             $tenantId,
             $entry,
             $updates,
-            $requestIp
-        );
-    }
-
-    return $this
-        ->tenantIpAccessRepository
-        ->updateEntry(
-            $entry,
-            $updates
-        );
-}
-
-
-
-
-
-  public function deleteEntry(
-    string $tenantId,
-    string $entryId,
-    ?string $requestIp = null
-): void {
-    $entry = $this
-        ->tenantIpAccessRepository
-        ->findEntryByTenantAndId(
-            $tenantId,
-            $entryId
-        );
-
-    if (!$entry) {
-        throw new DomainException(
-            'IP allowlist entry not found.'
-        );
-    }
-
-    if ($entry->is_active) {
-        $this->ensureCurrentIpRemainsAllowed(
-            $tenantId,
-            $entry,
-            [],
+            $before,
+            $actor,
             $requestIp,
-            true
-        );
-    }
-
-    $this
-        ->tenantIpAccessRepository
-        ->deleteEntry(
-            $entry
-        );
-}
-
-
-
-  private function ensureCurrentIpIsAllowed(
-    string $tenantId,
-    ?string $requestIp
-): void {
-    $requestIp = $this
-        ->validatedRequestIp(
-            $requestIp
-        );
-
-    $entries = $this
-        ->tenantIpAccessRepository
-        ->activeEntriesByTenant(
-            $tenantId
-        );
-
-    foreach ($entries as $entry) {
-        if (
-            $this->ipMatchesRule(
-                $requestIp,
-                $entry->ip_or_cidr
-            )
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
-            return;
-        }
-    }
+            $updatedEntry = $this
+                ->tenantIpAccessRepository
+                ->updateEntry(
+                    $entry,
+                    $updates
+                );
 
-    throw new DomainException(
-        'Your current IP address is not covered by an active allowlist entry.'
-    );
-}
+            $after = [
+                'label' => $updatedEntry->label,
+                'ip_or_cidr' => $updatedEntry->ip_or_cidr,
+                'is_active' =>
+                    (bool) $updatedEntry->is_active,
+            ];
 
-private function ensureCurrentIpRemainsAllowed(
-    string $tenantId,
-    TenantIpAllowlistEntry $targetEntry,
-    array $updates,
-    ?string $requestIp,
-    bool $deleting = false
-): void {
-    $policy = $this
-        ->tenantIpAccessRepository
-        ->findPolicyByTenant(
-            $tenantId
-        );
+            $changes = [];
 
-    if (!$policy?->enabled) {
-        return;
-    }
-
-    $requestIp = $this
-        ->validatedRequestIp(
-            $requestIp
-        );
-
-    $entries = $this
-        ->tenantIpAccessRepository
-        ->activeEntriesByTenant(
-            $tenantId
-        );
-
-    foreach ($entries as $entry) {
-        if ($entry->id === $targetEntry->id) {
-            if ($deleting) {
-                continue;
+            foreach (
+                $before as $field => $value
+            ) {
+                if ($value !== $after[$field]) {
+                    $changes[$field] = [
+                        'from' => $value,
+                        'to' => $after[$field],
+                    ];
+                }
             }
 
-            $isActive = array_key_exists(
-                'is_active',
-                $updates
-            )
-                ? (bool) $updates['is_active']
-                : (bool) $entry->is_active;
-
-            if (!$isActive) {
-                continue;
+            if (!empty($changes)) {
+                $this->auditEventService->record(
+                    tenantId: $tenantId,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'ip_allowlist_entry',
+                    targetId:
+                        (string) $updatedEntry->id,
+                    targetLabel:
+                        $updatedEntry->label
+                        ?: $updatedEntry->ip_or_cidr,
+                    description:
+                        'IP allowlist entry was updated.',
+                    changes: $changes,
+                    metadata: null,
+                    ipAddress: $requestIp,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
             }
 
-            $rule =
-                $updates['ip_or_cidr']
-                ?? $entry->ip_or_cidr;
-        } else {
-            $rule = $entry->ip_or_cidr;
+            return $updatedEntry;
+        });
+    }
+
+    public function deleteEntry(
+        string $tenantId,
+        string $entryId,
+        User $actor,
+        ?string $requestIp = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
+    ): void {
+        $entry = $this
+            ->tenantIpAccessRepository
+            ->findEntryByTenantAndId(
+                $tenantId,
+                $entryId
+            );
+
+        if (!$entry) {
+            throw new DomainException(
+                'IP allowlist entry not found.'
+            );
         }
 
-        if (
-            $this->ipMatchesRule(
+        if ($entry->is_active) {
+            $this->ensureCurrentIpRemainsAllowed(
+                $tenantId,
+                $entry,
+                [],
                 $requestIp,
-                $rule
-            )
+                true
+            );
+        }
+
+        $snapshot = [
+            'label' => $entry->label,
+            'ip_or_cidr' => $entry->ip_or_cidr,
+            'is_active' => (bool) $entry->is_active,
+        ];
+
+        DB::transaction(function () use (
+            $tenantId,
+            $entry,
+            $actor,
+            $requestIp,
+            $userAgent,
+            $requestMethod,
+            $requestPath,
+            $snapshot
         ) {
+            $this
+                ->tenantIpAccessRepository
+                ->deleteEntry(
+                    $entry
+                );
+
+            $this->auditEventService->record(
+                tenantId: $tenantId,
+                actor: $actor,
+                action: AuditEvent::ACTION_DELETED,
+                category: AuditEvent::CATEGORY_ACCESS,
+                targetType: 'ip_allowlist_entry',
+                targetId: (string) $entry->id,
+                targetLabel:
+                    $snapshot['label']
+                    ?: $snapshot['ip_or_cidr'],
+                description:
+                    'IP allowlist entry was deleted.',
+                changes: [
+                    'deleted' => [
+                        'from' => false,
+                        'to' => true,
+                    ],
+                ],
+                metadata: $snapshot,
+                ipAddress: $requestIp,
+                userAgent: $userAgent,
+                requestMethod: $requestMethod,
+                requestPath: $requestPath
+            );
+        });
+    }
+
+    private function ensureCurrentIpIsAllowed(
+        string $tenantId,
+        ?string $requestIp
+    ): void {
+        $requestIp = $this
+            ->validatedRequestIp(
+                $requestIp
+            );
+
+        $entries = $this
+            ->tenantIpAccessRepository
+            ->activeEntriesByTenant(
+                $tenantId
+            );
+
+        foreach ($entries as $entry) {
+            if (
+                $this->ipMatchesRule(
+                    $requestIp,
+                    $entry->ip_or_cidr
+                )
+            ) {
+                return;
+            }
+        }
+
+        throw new DomainException(
+            'Your current IP address is not covered by an active allowlist entry.'
+        );
+    }
+
+    private function ensureCurrentIpRemainsAllowed(
+        string $tenantId,
+        TenantIpAllowlistEntry $targetEntry,
+        array $updates,
+        ?string $requestIp,
+        bool $deleting = false
+    ): void {
+        $policy = $this
+            ->tenantIpAccessRepository
+            ->findPolicyByTenant(
+                $tenantId
+            );
+
+        if (!$policy?->enabled) {
             return;
         }
-    }
 
-    throw new DomainException(
-        'This change would remove your current IP address from the active allowlist. Add another matching entry or disable IP restrictions first.'
-    );
-}
+        $requestIp = $this
+            ->validatedRequestIp(
+                $requestIp
+            );
 
-private function validatedRequestIp(
-    ?string $requestIp
-): string {
-    $requestIp = trim(
-        (string) $requestIp
-    );
+        $entries = $this
+            ->tenantIpAccessRepository
+            ->activeEntriesByTenant(
+                $tenantId
+            );
 
-    if (
-        $requestIp === '' ||
-        filter_var(
-            $requestIp,
-            FILTER_VALIDATE_IP
-        ) === false
-    ) {
+        foreach ($entries as $entry) {
+            if (
+                $entry->id ===
+                $targetEntry->id
+            ) {
+                if ($deleting) {
+                    continue;
+                }
+
+                $isActive = array_key_exists(
+                    'is_active',
+                    $updates
+                )
+                    ? (bool) $updates['is_active']
+                    : (bool) $entry->is_active;
+
+                if (!$isActive) {
+                    continue;
+                }
+
+                $rule =
+                    $updates['ip_or_cidr']
+                    ?? $entry->ip_or_cidr;
+            } else {
+                $rule = $entry->ip_or_cidr;
+            }
+
+            if (
+                $this->ipMatchesRule(
+                    $requestIp,
+                    $rule
+                )
+            ) {
+                return;
+            }
+        }
+
         throw new DomainException(
-            'The current request IP address could not be validated.'
+            'This change would remove your current IP address from the active allowlist. Add another matching entry or disable IP restrictions first.'
         );
     }
 
-    $packed = inet_pton(
-        $requestIp
-    );
+    private function validatedRequestIp(
+        ?string $requestIp
+    ): string {
+        $requestIp = trim(
+            (string) $requestIp
+        );
 
-    if ($packed === false) {
-        throw new DomainException(
-            'The current request IP address could not be validated.'
+        if (
+            $requestIp === '' ||
+            filter_var(
+                $requestIp,
+                FILTER_VALIDATE_IP
+            ) === false
+        ) {
+            throw new DomainException(
+                'The current request IP address could not be validated.'
+            );
+        }
+
+        $packed = inet_pton(
+            $requestIp
+        );
+
+        if ($packed === false) {
+            throw new DomainException(
+                'The current request IP address could not be validated.'
+            );
+        }
+
+        return inet_ntop(
+            $packed
         );
     }
-
-    return inet_ntop(
-        $packed
-    );
-}
-
-
-
 
     private function normalizeLabel(
         ?string $label
@@ -436,16 +642,12 @@ private function validatedRequestIp(
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Single IP Address
-        |--------------------------------------------------------------------------
-        */
-
-        if (!str_contains(
-            $value,
-            '/'
-        )) {
+        if (
+            !str_contains(
+                $value,
+                '/'
+            )
+        ) {
             if (
                 filter_var(
                     $value,
@@ -471,12 +673,6 @@ private function validatedRequestIp(
                 $packed
             );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | CIDR Range
-        |--------------------------------------------------------------------------
-        */
 
         $parts = explode(
             '/',
@@ -527,12 +723,10 @@ private function validatedRequestIp(
             );
         }
 
-        $prefixLength = (int)
-            $prefix;
+        $prefixLength = (int) $prefix;
 
-        $maxPrefix = strlen(
-            $packed
-        ) * 8;
+        $maxPrefix =
+            strlen($packed) * 8;
 
         if (
             $prefixLength < 0 ||
@@ -542,19 +736,6 @@ private function validatedRequestIp(
                 'The CIDR prefix is outside the valid range.'
             );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Normalize CIDR To Network Address
-        |--------------------------------------------------------------------------
-        |
-        | Example:
-        | 192.168.1.55/24
-        |
-        | becomes:
-        | 192.168.1.0/24
-        |
-        */
 
         $bytes = unpack(
             'C*',
@@ -613,154 +794,157 @@ private function validatedRequestIp(
             . $prefixLength;
     }
 
-
     public function isIpAllowed(
-    string $tenantId,
-    string $ipAddress
-): bool {
-    $policy = $this
-        ->tenantIpAccessRepository
-        ->findPolicyByTenant(
-            $tenantId
-        );
+        string $tenantId,
+        string $ipAddress
+    ): bool {
+        $policy = $this
+            ->tenantIpAccessRepository
+            ->findPolicyByTenant(
+                $tenantId
+            );
 
-    if (!$policy?->enabled) {
-        return true;
-    }
+        if (!$policy?->enabled) {
+            return true;
+        }
 
-    if (
-        filter_var(
-            $ipAddress,
-            FILTER_VALIDATE_IP
-        ) === false
-    ) {
+        if (
+            filter_var(
+                $ipAddress,
+                FILTER_VALIDATE_IP
+            ) === false
+        ) {
+            return false;
+        }
+
+        $entries = $this
+            ->tenantIpAccessRepository
+            ->activeEntriesByTenant(
+                $tenantId
+            );
+
+        foreach ($entries as $entry) {
+            if (
+                $this->ipMatchesRule(
+                    $ipAddress,
+                    $entry->ip_or_cidr
+                )
+            ) {
+                return true;
+            }
+        }
+
         return false;
     }
 
-    $entries = $this
-        ->tenantIpAccessRepository
-        ->activeEntriesByTenant(
-            $tenantId
-        );
-
-    foreach ($entries as $entry) {
+    private function ipMatchesRule(
+        string $ipAddress,
+        string $rule
+    ): bool {
         if (
-            $this->ipMatchesRule(
-                $ipAddress,
-                $entry->ip_or_cidr
+            !str_contains(
+                $rule,
+                '/'
             )
         ) {
-            return true;
+            $requestIp = inet_pton(
+                $ipAddress
+            );
+
+            $allowedIp = inet_pton(
+                $rule
+            );
+
+            if (
+                $requestIp === false ||
+                $allowedIp === false
+            ) {
+                return false;
+            }
+
+            return hash_equals(
+                $allowedIp,
+                $requestIp
+            );
         }
-    }
 
-    return false;
-}
+        [$network, $prefix] = explode(
+            '/',
+            $rule,
+            2
+        );
 
-private function ipMatchesRule(
-    string $ipAddress,
-    string $rule
-): bool {
-    if (!str_contains($rule, '/')) {
         $requestIp = inet_pton(
             $ipAddress
         );
 
-        $allowedIp = inet_pton(
-            $rule
+        $networkIp = inet_pton(
+            $network
         );
 
         if (
             $requestIp === false ||
-            $allowedIp === false
+            $networkIp === false ||
+            strlen($requestIp) !==
+                strlen($networkIp)
         ) {
             return false;
         }
 
-        return hash_equals(
-            $allowedIp,
-            $requestIp
+        $prefixLength = (int) $prefix;
+
+        $maxBits =
+            strlen($requestIp) * 8;
+
+        if (
+            $prefixLength < 0 ||
+            $prefixLength > $maxBits
+        ) {
+            return false;
+        }
+
+        $fullBytes = intdiv(
+            $prefixLength,
+            8
+        );
+
+        $remainingBits =
+            $prefixLength % 8;
+
+        if ($fullBytes > 0) {
+            if (
+                substr(
+                    $requestIp,
+                    0,
+                    $fullBytes
+                ) !==
+                substr(
+                    $networkIp,
+                    0,
+                    $fullBytes
+                )
+            ) {
+                return false;
+            }
+        }
+
+        if ($remainingBits === 0) {
+            return true;
+        }
+
+        $mask = (
+            0xFF <<
+            (8 - $remainingBits)
+        ) & 0xFF;
+
+        return (
+            ord(
+                $requestIp[$fullBytes]
+            ) & $mask
+        ) === (
+            ord(
+                $networkIp[$fullBytes]
+            ) & $mask
         );
     }
-
-    [$network, $prefix] = explode(
-        '/',
-        $rule,
-        2
-    );
-
-    $requestIp = inet_pton(
-        $ipAddress
-    );
-
-    $networkIp = inet_pton(
-        $network
-    );
-
-    if (
-        $requestIp === false ||
-        $networkIp === false ||
-        strlen($requestIp) !== strlen($networkIp)
-    ) {
-        return false;
-    }
-
-    $prefixLength = (int) $prefix;
-
-    $maxBits = strlen(
-        $requestIp
-    ) * 8;
-
-    if (
-        $prefixLength < 0 ||
-        $prefixLength > $maxBits
-    ) {
-        return false;
-    }
-
-    $fullBytes = intdiv(
-        $prefixLength,
-        8
-    );
-
-    $remainingBits =
-        $prefixLength % 8;
-
-    if ($fullBytes > 0) {
-        if (
-            substr(
-                $requestIp,
-                0,
-                $fullBytes
-            ) !==
-            substr(
-                $networkIp,
-                0,
-                $fullBytes
-            )
-        ) {
-            return false;
-        }
-    }
-
-    if ($remainingBits === 0) {
-        return true;
-    }
-
-    $mask = (
-        0xFF <<
-        (8 - $remainingBits)
-    ) & 0xFF;
-
-    return (
-        ord($requestIp[$fullBytes])
-        & $mask
-    ) === (
-        ord($networkIp[$fullBytes])
-        & $mask
-    );
-}
-
-
-
 }

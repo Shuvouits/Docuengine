@@ -2,7 +2,10 @@
 
 namespace App\Services\Security;
 
+use App\Models\AuditEvent;
+use App\Models\User;
 use App\Repositories\TenantRoleRepository;
+use App\Services\Audit\AuditEventService;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -12,7 +15,8 @@ use Spatie\Permission\PermissionRegistrar;
 class TenantRoleService
 {
     public function __construct(
-        private TenantRoleRepository $tenantRoleRepository
+        private TenantRoleRepository $tenantRoleRepository,
+        private AuditEventService $auditEventService
     ) {
     }
 
@@ -49,7 +53,12 @@ class TenantRoleService
 
     public function create(
         string $tenantId,
-        array $data
+        array $data,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): Role {
         $this->setTenantContext($tenantId);
 
@@ -82,7 +91,12 @@ class TenantRoleService
         return DB::transaction(function () use (
             $tenantId,
             $name,
-            $permissions
+            $permissions,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $role = $this
                 ->tenantRoleRepository
@@ -100,19 +114,61 @@ class TenantRoleService
             app(PermissionRegistrar::class)
                 ->forgetCachedPermissions();
 
-            return $this
+            $createdRole = $this
                 ->tenantRoleRepository
                 ->findByTenantAndId(
                     $tenantId,
                     $role->id
                 );
+
+            if (!$createdRole) {
+                throw new DomainException(
+                    'Role was created but could not be reloaded.'
+                );
+            }
+
+            if ($actor) {
+                $permissionNames = $createdRole
+                    ->getPermissionNames()
+                    ->sort()
+                    ->values()
+                    ->all();
+
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_CREATED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'role',
+                        targetId: (string) $createdRole->id,
+                        targetLabel: $createdRole->name,
+                        description: 'Tenant role was created.',
+                        changes: null,
+                        metadata: [
+                            'permissions' => $permissionNames,
+                        ],
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
+
+            return $createdRole;
         });
     }
 
     public function update(
         string $tenantId,
         int $roleId,
-        array $data
+        array $data,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): Role {
         $this->setTenantContext($tenantId);
 
@@ -170,11 +226,26 @@ class TenantRoleService
                 );
         }
 
+        $oldName = $role->name;
+
+        $oldPermissions = $role
+            ->getPermissionNames()
+            ->sort()
+            ->values()
+            ->all();
+
         return DB::transaction(function () use (
             $tenantId,
             $role,
             $name,
-            $permissions
+            $permissions,
+            $oldName,
+            $oldPermissions,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $role = $this
                 ->tenantRoleRepository
@@ -194,18 +265,77 @@ class TenantRoleService
             app(PermissionRegistrar::class)
                 ->forgetCachedPermissions();
 
-            return $this
+            $updatedRole = $this
                 ->tenantRoleRepository
                 ->findByTenantAndId(
                     $tenantId,
                     $role->id
                 );
+
+            if (!$updatedRole) {
+                throw new DomainException(
+                    'Role was updated but could not be reloaded.'
+                );
+            }
+
+            $newPermissions = $updatedRole
+                ->getPermissionNames()
+                ->sort()
+                ->values()
+                ->all();
+
+            $changes = [];
+
+            if ($oldName !== $updatedRole->name) {
+                $changes['name'] = [
+                    'from' => $oldName,
+                    'to' => $updatedRole->name,
+                ];
+            }
+
+            if ($oldPermissions !== $newPermissions) {
+                $changes['permissions'] = [
+                    'from' => $oldPermissions,
+                    'to' => $newPermissions,
+                ];
+            }
+
+            if (
+                $actor &&
+                !empty($changes)
+            ) {
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_UPDATED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'role',
+                        targetId: (string) $updatedRole->id,
+                        targetLabel: $updatedRole->name,
+                        description: 'Tenant role was updated.',
+                        changes: $changes,
+                        metadata: null,
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
+
+            return $updatedRole;
         });
     }
 
     public function delete(
         string $tenantId,
-        int $roleId
+        int $roleId,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): void {
         $this->setTenantContext($tenantId);
 
@@ -248,8 +378,25 @@ class TenantRoleService
             );
         }
 
+        $roleName = $role->name;
+
+        $permissionNames = $role
+            ->getPermissionNames()
+            ->sort()
+            ->values()
+            ->all();
+
         DB::transaction(function () use (
-            $role
+            $tenantId,
+            $role,
+            $roleId,
+            $roleName,
+            $permissionNames,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $this
                 ->tenantRoleRepository
@@ -257,6 +404,29 @@ class TenantRoleService
 
             app(PermissionRegistrar::class)
                 ->forgetCachedPermissions();
+
+            if ($actor) {
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_DELETED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'role',
+                        targetId: (string) $roleId,
+                        targetLabel: $roleName,
+                        description: 'Tenant role was deleted.',
+                        changes: null,
+                        metadata: [
+                            'permissions' => $permissionNames,
+                        ],
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
         });
     }
 

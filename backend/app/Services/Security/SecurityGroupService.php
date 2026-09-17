@@ -2,8 +2,12 @@
 
 namespace App\Services\Security;
 
+use App\Models\AuditEvent;
 use App\Models\SecurityGroup;
+use App\Models\User;
 use App\Repositories\SecurityGroupRepository;
+use App\Services\Archive\ArchiveService;
+use App\Services\Audit\AuditEventService;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -11,7 +15,9 @@ use Illuminate\Support\Facades\DB;
 class SecurityGroupService
 {
     public function __construct(
-        private SecurityGroupRepository $securityGroupRepository
+        private SecurityGroupRepository $securityGroupRepository,
+        private ArchiveService $archiveService,
+        private AuditEventService $auditEventService
     ) {
     }
 
@@ -63,7 +69,12 @@ class SecurityGroupService
     public function create(
         string $tenantId,
         string $createdBy,
-        array $data
+        array $data,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): SecurityGroup {
         $name = trim(
             $data['name']
@@ -92,36 +103,76 @@ class SecurityGroupService
             $tenantId,
             $createdBy,
             $name,
-            $data
+            $data,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $group = $this
                 ->securityGroupRepository
                 ->create([
                     'tenant_id' => $tenantId,
-
                     'name' => $name,
-
                     'description' =>
                         $data['description'] ?? null,
-
                     'is_system' => false,
-
                     'created_by' => $createdBy,
                 ]);
 
-            return $this
+            $createdGroup = $this
                 ->securityGroupRepository
                 ->findByTenantAndId(
                     $tenantId,
                     $group->id
                 );
+
+            if (!$createdGroup) {
+                throw new DomainException(
+                    'Security group was created but could not be reloaded.'
+                );
+            }
+
+            if ($actor) {
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_CREATED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'security_group',
+                        targetId: $createdGroup->id,
+                        targetLabel: $createdGroup->name,
+                        description: 'Security group was created.',
+                        changes: null,
+                        metadata: [
+                            'description' =>
+                                $createdGroup->description,
+                            'is_system' =>
+                                $createdGroup->is_system,
+                        ],
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
+
+            return $createdGroup;
         });
     }
 
     public function update(
         string $tenantId,
         string $groupId,
-        array $data
+        array $data,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): SecurityGroup {
         $group = $this
             ->securityGroupRepository
@@ -171,11 +222,21 @@ class SecurityGroupService
             );
         }
 
+        $oldName = $group->name;
+        $oldDescription = $group->description;
+
         return DB::transaction(function () use (
             $tenantId,
             $group,
             $name,
-            $data
+            $data,
+            $oldName,
+            $oldDescription,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $updateData = [
                 'name' => $name,
@@ -198,18 +259,78 @@ class SecurityGroupService
                     $updateData
                 );
 
-            return $this
+            $updatedGroup = $this
                 ->securityGroupRepository
                 ->findByTenantAndId(
                     $tenantId,
                     $group->id
                 );
+
+            if (!$updatedGroup) {
+                throw new DomainException(
+                    'Security group was updated but could not be reloaded.'
+                );
+            }
+
+            $changes = [];
+
+            if (
+                $oldName !==
+                $updatedGroup->name
+            ) {
+                $changes['name'] = [
+                    'from' => $oldName,
+                    'to' => $updatedGroup->name,
+                ];
+            }
+
+            if (
+                $oldDescription !==
+                $updatedGroup->description
+            ) {
+                $changes['description'] = [
+                    'from' => $oldDescription,
+                    'to' => $updatedGroup->description,
+                ];
+            }
+
+            if (
+                $actor &&
+                !empty($changes)
+            ) {
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_UPDATED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'security_group',
+                        targetId: $updatedGroup->id,
+                        targetLabel: $updatedGroup->name,
+                        description: 'Security group was updated.',
+                        changes: $changes,
+                        metadata: null,
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
+
+            return $updatedGroup;
         });
     }
 
     public function delete(
         string $tenantId,
-        string $groupId
+        string $groupId,
+        User $actor,
+        ?string $reason = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): void {
         $group = $this
             ->securityGroupRepository
@@ -226,7 +347,7 @@ class SecurityGroupService
 
         if ($group->isSystem()) {
             throw new DomainException(
-                'System security groups cannot be deleted.'
+                'System security groups cannot be archived.'
             );
         }
 
@@ -239,23 +360,66 @@ class SecurityGroupService
                 )
         ) {
             throw new DomainException(
-                'This security group cannot be deleted because it has assigned users.'
+                'This security group cannot be archived because it has assigned users.'
             );
         }
 
         DB::transaction(function () use (
-            $group
+            $tenantId,
+            $group,
+            $actor,
+            $reason,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
-            $this
+            $deleted = $this
                 ->securityGroupRepository
                 ->delete($group);
+
+            if (!$deleted) {
+                throw new DomainException(
+                    'Unable to archive the security group.'
+                );
+            }
+
+            $this
+                ->archiveService
+                ->registerArchivedResource(
+                    tenantId: $tenantId,
+                    resourceType: 'security_group',
+                    resourceId: $group->id,
+                    resourceLabel: $group->name,
+                    actor: $actor,
+                    reason: $reason,
+                    metadata: [
+                        'description' =>
+                            $group->description,
+                        'is_system' =>
+                            $group->is_system,
+                        'created_by' =>
+                            $group->created_by,
+                        'created_at' =>
+                            $group->created_at?->toISOString(),
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
         });
     }
 
     public function addUser(
         string $tenantId,
         string $groupId,
-        string $userId
+        string $userId,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): SecurityGroup {
         $group = $this
             ->securityGroupRepository
@@ -270,12 +434,6 @@ class SecurityGroupService
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | User Must Be Active Member Of Same Tenant
-        |--------------------------------------------------------------------------
-        */
-
         $membership = $this
             ->securityGroupRepository
             ->findActiveTenantMembership(
@@ -288,12 +446,6 @@ class SecurityGroupService
                 'The selected user is not an active member of this tenant.'
             );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Duplicate Membership Protection
-        |--------------------------------------------------------------------------
-        */
 
         $existingMembership = $this
             ->securityGroupRepository
@@ -309,10 +461,16 @@ class SecurityGroupService
             );
         }
 
-        DB::transaction(function () use (
+        return DB::transaction(function () use (
             $tenantId,
             $groupId,
-            $userId
+            $userId,
+            $group,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $this
                 ->securityGroupRepository
@@ -321,20 +479,62 @@ class SecurityGroupService
                     $groupId,
                     $userId
                 );
-        });
 
-        return $this
-            ->securityGroupRepository
-            ->findByTenantAndId(
-                $tenantId,
-                $groupId
-            );
+            if ($actor) {
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_UPDATED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'security_group',
+                        targetId: $group->id,
+                        targetLabel: $group->name,
+                        description: 'User was added to the security group.',
+                        changes: [
+                            'member_user_id' => [
+                                'from' => null,
+                                'to' => $userId,
+                            ],
+                        ],
+                        metadata: [
+                            'user_id' => $userId,
+                            'membership_action' => 'added',
+                        ],
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
+
+            $updatedGroup = $this
+                ->securityGroupRepository
+                ->findByTenantAndId(
+                    $tenantId,
+                    $groupId
+                );
+
+            if (!$updatedGroup) {
+                throw new DomainException(
+                    'Security group could not be reloaded.'
+                );
+            }
+
+            return $updatedGroup;
+        });
     }
 
     public function removeUser(
         string $tenantId,
         string $groupId,
-        string $userId
+        string $userId,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): SecurityGroup {
         $group = $this
             ->securityGroupRepository
@@ -363,10 +563,16 @@ class SecurityGroupService
             );
         }
 
-        DB::transaction(function () use (
+        return DB::transaction(function () use (
             $tenantId,
             $groupId,
-            $userId
+            $userId,
+            $group,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $this
                 ->securityGroupRepository
@@ -375,13 +581,194 @@ class SecurityGroupService
                     $groupId,
                     $userId
                 );
-        });
 
-        return $this
+            if ($actor) {
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_UPDATED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'security_group',
+                        targetId: $group->id,
+                        targetLabel: $group->name,
+                        description: 'User was removed from the security group.',
+                        changes: [
+                            'member_user_id' => [
+                                'from' => $userId,
+                                'to' => null,
+                            ],
+                        ],
+                        metadata: [
+                            'user_id' => $userId,
+                            'membership_action' => 'removed',
+                        ],
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
+
+            $updatedGroup = $this
+                ->securityGroupRepository
+                ->findByTenantAndId(
+                    $tenantId,
+                    $groupId
+                );
+
+            if (!$updatedGroup) {
+                throw new DomainException(
+                    'Security group could not be reloaded.'
+                );
+            }
+
+            return $updatedGroup;
+        });
+    }
+
+    public function restore(
+        string $tenantId,
+        string $groupId,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
+    ): SecurityGroup {
+        $group = $this
             ->securityGroupRepository
-            ->findByTenantAndId(
+            ->findArchivedByTenantAndId(
                 $tenantId,
                 $groupId
             );
+
+        if (!$group) {
+            throw new DomainException(
+                'Archived security group not found.'
+            );
+        }
+
+        $archiveEntry = $this
+            ->archiveService
+            ->getArchivedByResource(
+                $tenantId,
+                'security_group',
+                $groupId
+            );
+
+        return DB::transaction(function () use (
+            $tenantId,
+            $groupId,
+            $group,
+            $archiveEntry,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
+        ) {
+            $restored = $this
+                ->securityGroupRepository
+                ->restore($group);
+
+            if (!$restored) {
+                throw new DomainException(
+                    'Unable to restore the security group.'
+                );
+            }
+
+            $this
+                ->archiveService
+                ->markRestored(
+                    tenantId: $tenantId,
+                    archiveEntryId: $archiveEntry->id,
+                    actor: $actor,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
+            $restoredGroup = $this
+                ->securityGroupRepository
+                ->findByTenantAndId(
+                    $tenantId,
+                    $groupId
+                );
+
+            if (!$restoredGroup) {
+                throw new DomainException(
+                    'Security group was restored but could not be reloaded.'
+                );
+            }
+
+            return $restoredGroup;
+        });
+    }
+
+    public function permanentlyDelete(
+        string $tenantId,
+        string $groupId,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
+    ): void {
+        $group = $this
+            ->securityGroupRepository
+            ->findArchivedByTenantAndId(
+                $tenantId,
+                $groupId
+            );
+
+        if (!$group) {
+            throw new DomainException(
+                'Archived security group not found.'
+            );
+        }
+
+        $archiveEntry = $this
+            ->archiveService
+            ->getArchivedByResource(
+                $tenantId,
+                'security_group',
+                $groupId
+            );
+
+        DB::transaction(function () use (
+            $tenantId,
+            $group,
+            $archiveEntry,
+            $actor,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
+        ) {
+            $deleted = $this
+                ->securityGroupRepository
+                ->forceDelete($group);
+
+            if (!$deleted) {
+                throw new DomainException(
+                    'Unable to permanently delete the security group.'
+                );
+            }
+
+            $this
+                ->archiveService
+                ->markPermanentlyDeleted(
+                    tenantId: $tenantId,
+                    archiveEntryId: $archiveEntry->id,
+                    actor: $actor,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+        });
     }
 }

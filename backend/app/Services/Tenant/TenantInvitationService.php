@@ -2,81 +2,67 @@
 
 namespace App\Services\Tenant;
 
+use App\Models\AuditEvent;
 use App\Models\TenantInvitation;
+use App\Models\TenantUser;
+use App\Models\User;
 use App\Repositories\TenantInvitationRepository;
 use App\Repositories\TenantUserRepository;
+use App\Services\Audit\AuditEventService;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use App\Models\TenantUser;
-use App\Models\User;
 use Spatie\Permission\PermissionRegistrar;
 
 class TenantInvitationService
 {
     public function __construct(
         protected TenantInvitationRepository $invitationRepository,
-        protected TenantUserRepository $tenantUserRepository
+        protected TenantUserRepository $tenantUserRepository,
+        protected AuditEventService $auditEventService
     ) {
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Get Tenant Invitations
-    |--------------------------------------------------------------------------
-    */
-
     public function getAll(string $tenantId): Collection
     {
-        return $this->invitationRepository
+        return $this
+            ->invitationRepository
             ->allByTenant($tenantId);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Get Single Invitation
-    |--------------------------------------------------------------------------
-    */
 
     public function getById(
         string $tenantId,
         string $invitationId
     ): ?TenantInvitation {
-        return $this->invitationRepository
+        return $this
+            ->invitationRepository
             ->findByTenantAndId(
                 $tenantId,
                 $invitationId
             );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Create Invitation
-    |--------------------------------------------------------------------------
-    */
-
     public function create(
         string $tenantId,
         array $data,
-        string $invitedBy
+        string $invitedBy,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): array {
         $email = strtolower(
             trim($data['email'])
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Prevent Inviting Existing Tenant Member
-        |--------------------------------------------------------------------------
-        */
-
-        $existingMembership =
-            $this->tenantUserRepository
-                ->findByTenantAndEmail(
-                    $tenantId,
-                    $email
-                );
+        $existingMembership = $this
+            ->tenantUserRepository
+            ->findByTenantAndEmail(
+                $tenantId,
+                $email
+            );
 
         if ($existingMembership) {
             throw new DomainException(
@@ -84,18 +70,12 @@ class TenantInvitationService
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Prevent Duplicate Pending Invitation
-        |--------------------------------------------------------------------------
-        */
-
-        $existingInvitation =
-            $this->invitationRepository
-                ->findPendingByTenantAndEmail(
-                    $tenantId,
-                    $email
-                );
+        $existingInvitation = $this
+            ->invitationRepository
+            ->findPendingByTenantAndEmail(
+                $tenantId,
+                $email
+            );
 
         if (
             $existingInvitation &&
@@ -106,18 +86,12 @@ class TenantInvitationService
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Validate Tenant Role
-        |--------------------------------------------------------------------------
-        */
-
-        $role =
-            $this->tenantUserRepository
-                ->findRole(
-                    $tenantId,
-                    $data['role']
-                );
+        $role = $this
+            ->tenantUserRepository
+            ->findRole(
+                $tenantId,
+                $data['role']
+            );
 
         if (!$role) {
             throw new DomainException(
@@ -125,80 +99,76 @@ class TenantInvitationService
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Generate Secure Invitation Token
-        |--------------------------------------------------------------------------
-        |
-        | Raw token is returned once.
-        | Database stores only SHA-256 hash.
-        |
-        */
+        $plainToken = Str::random(64);
 
-        $plainToken =
-            Str::random(64);
+        $tokenHash = hash(
+            'sha256',
+            $plainToken
+        );
 
-        $tokenHash =
-            hash(
-                'sha256',
-                $plainToken
-            );
+        $expiresInHours = (int) config(
+            'docuengine.invitations.expires_hours',
+            72
+        );
 
-        $expiresInHours =
-            (int) config(
-                'docuengine.invitations.expires_hours',
-                72
-            );
+        $invitation = DB::transaction(
+            function () use (
+                $tenantId,
+                $data,
+                $email,
+                $role,
+                $tokenHash,
+                $invitedBy,
+                $expiresInHours,
+                $actor,
+                $ipAddress,
+                $userAgent,
+                $requestMethod,
+                $requestPath
+            ) {
+                $invitation = $this
+                    ->invitationRepository
+                    ->create([
+                        'tenant_id' => $tenantId,
+                        'name' => $data['name'] ?? null,
+                        'email' => $email,
+                        'role_id' => $role->id,
+                        'token_hash' => $tokenHash,
+                        'status' => TenantInvitation::STATUS_PENDING,
+                        'expires_at' => now()->addHours(
+                            $expiresInHours
+                        ),
+                        'invited_by' => $invitedBy,
+                    ]);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Create Invitation
-        |--------------------------------------------------------------------------
-        */
-
-        $invitation =
-            DB::transaction(
-                function () use (
-                    $tenantId,
-                    $data,
-                    $email,
-                    $role,
-                    $tokenHash,
-                    $invitedBy,
-                    $expiresInHours
-                ) {
-                    return $this
-                        ->invitationRepository
-                        ->create([
-                            'tenant_id' =>
-                                $tenantId,
-
-                            'name' =>
-                                $data['name']
-                                    ?? null,
-
-                            'email' =>
-                                $email,
-
-                            'role_id' =>
-                                $role->id,
-
-                            'token_hash' =>
-                                $tokenHash,
-
-                            'status' =>
-                                TenantInvitation::STATUS_PENDING,
-
-                            'expires_at' =>
-                                now()->addHours(
-                                    $expiresInHours
-                                ),
-
-                            'invited_by' =>
-                                $invitedBy,
-                        ]);
+                if ($actor) {
+                    $this
+                        ->auditEventService
+                        ->record(
+                            tenantId: $tenantId,
+                            actor: $actor,
+                            action: AuditEvent::ACTION_CREATED,
+                            category: AuditEvent::CATEGORY_ACCESS,
+                            targetType: 'tenant_invitation',
+                            targetId: (string) $invitation->id,
+                            targetLabel: $email,
+                            description: 'Tenant invitation was created.',
+                            changes: null,
+                            metadata: [
+                                'email' => $email,
+                                'role' => $role->name,
+                                'status' => TenantInvitation::STATUS_PENDING,
+                            ],
+                            ipAddress: $ipAddress,
+                            userAgent: $userAgent,
+                            requestMethod: $requestMethod,
+                            requestPath: $requestPath
+                        );
                 }
-            );
+
+                return $invitation;
+            }
+        );
 
         $invitation->load([
             'role:id,name,guard_name',
@@ -206,32 +176,18 @@ class TenantInvitationService
         ]);
 
         return [
-            'invitation' =>
-                $invitation,
-
-            /*
-            |--------------------------------------------------------------------------
-            | Raw Token
-            |--------------------------------------------------------------------------
-            |
-            | This will later be placed inside the invitation email URL.
-            | It must never be persisted in the database.
-            |
-            */
-
-            'token' =>
-                $plainToken,
+            'invitation' => $invitation,
+            'token' => $plainToken,
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Revoke Invitation
-    |--------------------------------------------------------------------------
-    */
-
     public function revoke(
-        TenantInvitation $invitation
+        TenantInvitation $invitation,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): TenantInvitation {
         if ($invitation->isAccepted()) {
             throw new DomainException(
@@ -245,32 +201,73 @@ class TenantInvitationService
             );
         }
 
-        return $this
-            ->invitationRepository
-            ->update(
-                $invitation,
-                [
-                    'status' =>
-                        TenantInvitation::STATUS_REVOKED,
+        $oldStatus = $invitation->status;
 
-                    'revoked_at' =>
-                        now(),
-                ]
-            );
+        return DB::transaction(
+            function () use (
+                $invitation,
+                $oldStatus,
+                $actor,
+                $ipAddress,
+                $userAgent,
+                $requestMethod,
+                $requestPath
+            ) {
+                $updatedInvitation = $this
+                    ->invitationRepository
+                    ->update(
+                        $invitation,
+                        [
+                            'status' =>
+                                TenantInvitation::STATUS_REVOKED,
+
+                            'revoked_at' =>
+                                now(),
+                        ]
+                    );
+
+                if ($actor) {
+                    $this
+                        ->auditEventService
+                        ->record(
+                            tenantId: $updatedInvitation->tenant_id,
+                            actor: $actor,
+                            action: AuditEvent::ACTION_UPDATED,
+                            category: AuditEvent::CATEGORY_ACCESS,
+                            targetType: 'tenant_invitation',
+                            targetId: (string) $updatedInvitation->id,
+                            targetLabel: $updatedInvitation->email,
+                            description: 'Tenant invitation was revoked.',
+                            changes: [
+                                'status' => [
+                                    'from' => $oldStatus,
+                                    'to' =>
+                                        TenantInvitation::STATUS_REVOKED,
+                                ],
+                            ],
+                            metadata: [
+                                'email' =>
+                                    $updatedInvitation->email,
+                            ],
+                            ipAddress: $ipAddress,
+                            userAgent: $userAgent,
+                            requestMethod: $requestMethod,
+                            requestPath: $requestPath
+                        );
+                }
+
+                return $updatedInvitation;
+            }
+        );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Resend Invitation
-    |--------------------------------------------------------------------------
-    |
-    | A new token is generated every time.
-    | The previous invitation token immediately becomes invalid.
-    |
-    */
-
     public function resend(
-        TenantInvitation $invitation
+        TenantInvitation $invitation,
+        ?User $actor = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): array {
         if ($invitation->isAccepted()) {
             throw new DomainException(
@@ -284,69 +281,118 @@ class TenantInvitationService
             );
         }
 
-        $plainToken =
-            Str::random(64);
+        $oldStatus = $invitation->status;
 
-        $tokenHash =
-            hash(
-                'sha256',
-                $plainToken
-            );
+        $oldExpiresAt = $invitation->expires_at
+            ? $invitation->expires_at->toISOString()
+            : null;
 
-        $expiresInHours =
-            (int) config(
-                'docuengine.invitations.expires_hours',
-                72
-            );
+        $plainToken = Str::random(64);
 
-        $invitation =
-            $this
-                ->invitationRepository
-                ->update(
-                    $invitation,
-                    [
-                        'token_hash' =>
-                            $tokenHash,
+        $tokenHash = hash(
+            'sha256',
+            $plainToken
+        );
 
-                        'status' =>
-                            TenantInvitation::STATUS_PENDING,
+        $expiresInHours = (int) config(
+            'docuengine.invitations.expires_hours',
+            72
+        );
 
-                        'expires_at' =>
-                            now()->addHours(
-                                $expiresInHours
-                            ),
+        $newExpiresAt = now()->addHours(
+            $expiresInHours
+        );
 
-                        'accepted_at' =>
-                            null,
+        $invitation = DB::transaction(
+            function () use (
+                $invitation,
+                $tokenHash,
+                $newExpiresAt,
+                $oldStatus,
+                $oldExpiresAt,
+                $actor,
+                $ipAddress,
+                $userAgent,
+                $requestMethod,
+                $requestPath
+            ) {
+                $updatedInvitation = $this
+                    ->invitationRepository
+                    ->update(
+                        $invitation,
+                        [
+                            'token_hash' => $tokenHash,
+                            'status' =>
+                                TenantInvitation::STATUS_PENDING,
+                            'expires_at' => $newExpiresAt,
+                            'accepted_at' => null,
+                            'revoked_at' => null,
+                        ]
+                    );
 
-                        'revoked_at' =>
-                            null,
-                    ]
-                );
+                if ($actor) {
+                    $changes = [
+                        'expires_at' => [
+                            'from' => $oldExpiresAt,
+                            'to' => $updatedInvitation->expires_at
+                                ? $updatedInvitation
+                                    ->expires_at
+                                    ->toISOString()
+                                : null,
+                        ],
+                    ];
+
+                    if (
+                        $oldStatus !==
+                        TenantInvitation::STATUS_PENDING
+                    ) {
+                        $changes['status'] = [
+                            'from' => $oldStatus,
+                            'to' =>
+                                TenantInvitation::STATUS_PENDING,
+                        ];
+                    }
+
+                    $this
+                        ->auditEventService
+                        ->record(
+                            tenantId: $updatedInvitation->tenant_id,
+                            actor: $actor,
+                            action: AuditEvent::ACTION_UPDATED,
+                            category: AuditEvent::CATEGORY_ACCESS,
+                            targetType: 'tenant_invitation',
+                            targetId: (string) $updatedInvitation->id,
+                            targetLabel: $updatedInvitation->email,
+                            description: 'Tenant invitation was resent.',
+                            changes: $changes,
+                            metadata: [
+                                'email' =>
+                                    $updatedInvitation->email,
+                            ],
+                            ipAddress: $ipAddress,
+                            userAgent: $userAgent,
+                            requestMethod: $requestMethod,
+                            requestPath: $requestPath
+                        );
+                }
+
+                return $updatedInvitation;
+            }
+        );
 
         return [
-            'invitation' =>
-                $invitation,
-
-            'token' =>
-                $plainToken,
+            'invitation' => $invitation,
+            'token' => $plainToken,
         ];
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Find Invitation From Raw Token
-    |--------------------------------------------------------------------------
-    */
 
     public function findByToken(
         string $plainToken
     ): ?TenantInvitation {
-        $tokenHash =
-            hash(
-                'sha256',
-                $plainToken
-            );
+        $tokenHash = hash(
+            'sha256',
+            $plainToken
+        );
 
         return $this
             ->invitationRepository
@@ -355,131 +401,18 @@ class TenantInvitationService
             );
     }
 
-
     public function validateToken(
-    string $plainToken
-): TenantInvitation {
-    $invitation = $this->findByToken(
-        $plainToken
-    );
-
-    if (!$invitation) {
-        throw new DomainException(
-            'Invitation token is invalid.'
+        string $plainToken
+    ): TenantInvitation {
+        $invitation = $this->findByToken(
+            $plainToken
         );
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Revoked Invitation
-    |--------------------------------------------------------------------------
-    */
-
-    if ($invitation->isRevoked()) {
-        throw new DomainException(
-            'This invitation has been revoked.'
-        );
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Already Accepted
-    |--------------------------------------------------------------------------
-    */
-
-    if ($invitation->isAccepted()) {
-        throw new DomainException(
-            'This invitation has already been accepted.'
-        );
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Expired Invitation
-    |--------------------------------------------------------------------------
-    */
-
-    if ($invitation->isExpired()) {
-        if (
-            $invitation->status !==
-            TenantInvitation::STATUS_EXPIRED
-        ) {
-            $invitation = $this
-                ->invitationRepository
-                ->update(
-                    $invitation,
-                    [
-                        'status' =>
-                            TenantInvitation::STATUS_EXPIRED,
-                    ]
-                );
-        }
-
-        throw new DomainException(
-            'This invitation has expired.'
-        );
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Only Pending Invitations Are Valid
-    |--------------------------------------------------------------------------
-    */
-
-    if (!$invitation->isPending()) {
-        throw new DomainException(
-            'This invitation is no longer valid.'
-        );
-    }
-
-    return $invitation;
-}
-
-
-
-
-public function accept(
-    string $plainToken,
-    array $data
-): array {
-    $tokenHash = hash(
-        'sha256',
-        $plainToken
-    );
-
-    return DB::transaction(function () use (
-        $tokenHash,
-        $data
-    ) {
-        /*
-        |--------------------------------------------------------------------------
-        | Lock Invitation
-        |--------------------------------------------------------------------------
-        */
-
-        $invitation = $this
-            ->invitationRepository
-            ->findByTokenHashForUpdate(
-                $tokenHash
-            );
 
         if (!$invitation) {
             throw new DomainException(
                 'Invitation token is invalid.'
             );
         }
-
-        $invitation->load([
-            'tenant',
-            'role:id,name,guard_name,tenant_id',
-            'invitedBy:id,name,email',
-        ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Validate Invitation State
-        |--------------------------------------------------------------------------
-        */
 
         if ($invitation->isRevoked()) {
             throw new DomainException(
@@ -494,6 +427,21 @@ public function accept(
         }
 
         if ($invitation->isExpired()) {
+            if (
+                $invitation->status !==
+                TenantInvitation::STATUS_EXPIRED
+            ) {
+                $invitation = $this
+                    ->invitationRepository
+                    ->update(
+                        $invitation,
+                        [
+                            'status' =>
+                                TenantInvitation::STATUS_EXPIRED,
+                        ]
+                    );
+            }
+
             throw new DomainException(
                 'This invitation has expired.'
             );
@@ -505,211 +453,248 @@ public function accept(
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Make Sure Role Still Belongs To Tenant
-        |--------------------------------------------------------------------------
-        */
+        return $invitation;
+    }
 
-        $role = $this
-            ->tenantUserRepository
-            ->findRole(
-                $invitation->tenant_id,
-                $invitation->role->name
-            );
+    public function accept(
+        string $plainToken,
+        array $data,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
+    ): array {
+        $tokenHash = hash(
+            'sha256',
+            $plainToken
+        );
 
-        if (!$role) {
-            throw new DomainException(
-                'The invitation role is no longer available.'
-            );
-        }
+        return DB::transaction(function () use (
+            $tokenHash,
+            $data,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
+        ) {
+            $invitation = $this
+                ->invitationRepository
+                ->findByTokenHashForUpdate(
+                    $tokenHash
+                );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Prevent Existing Membership
-        |--------------------------------------------------------------------------
-        */
-
-        $existingMembership = $this
-            ->tenantUserRepository
-            ->findByTenantAndEmail(
-                $invitation->tenant_id,
-                $invitation->email
-            );
-
-        if ($existingMembership) {
-            throw new DomainException(
-                'This user is already a member of the tenant.'
-            );
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Find Existing Global User
-        |--------------------------------------------------------------------------
-        */
-
-        $user = $this
-            ->tenantUserRepository
-            ->findUserByEmail(
-                $invitation->email
-            );
-
-        /*
-        |--------------------------------------------------------------------------
-        | Create New User When Needed
-        |--------------------------------------------------------------------------
-        */
-
-        if (!$user) {
-            $name = trim(
-                $data['name']
-                    ?? $invitation->name
-                    ?? ''
-            );
-
-            if (!$name) {
+            if (!$invitation) {
                 throw new DomainException(
-                    'Name is required to activate this account.'
+                    'Invitation token is invalid.'
                 );
             }
 
-            if (empty($data['password'])) {
+            $invitation->load([
+                'tenant',
+                'role:id,name,guard_name,tenant_id',
+                'invitedBy:id,name,email',
+            ]);
+
+            if ($invitation->isRevoked()) {
                 throw new DomainException(
-                    'Password is required to activate this account.'
+                    'This invitation has been revoked.'
+                );
+            }
+
+            if ($invitation->isAccepted()) {
+                throw new DomainException(
+                    'This invitation has already been accepted.'
+                );
+            }
+
+            if ($invitation->isExpired()) {
+                throw new DomainException(
+                    'This invitation has expired.'
+                );
+            }
+
+            if (!$invitation->isPending()) {
+                throw new DomainException(
+                    'This invitation is no longer valid.'
+                );
+            }
+
+            $role = $this
+                ->tenantUserRepository
+                ->findRole(
+                    $invitation->tenant_id,
+                    $invitation->role->name
+                );
+
+            if (!$role) {
+                throw new DomainException(
+                    'The invitation role is no longer available.'
+                );
+            }
+
+            $existingMembership = $this
+                ->tenantUserRepository
+                ->findByTenantAndEmail(
+                    $invitation->tenant_id,
+                    $invitation->email
+                );
+
+            if ($existingMembership) {
+                throw new DomainException(
+                    'This user is already a member of the tenant.'
                 );
             }
 
             $user = $this
                 ->tenantUserRepository
-                ->createUser([
-                    'name' => $name,
-
-                    'email' => strtolower(
-                        $invitation->email
-                    ),
-
-                    'password' =>
-                        $data['password'],
-
-                    'status' =>
-                        User::STATUS_ACTIVE,
-
-                    'is_platform_owner' =>
-                        false,
-                ]);
-        } else {
-            /*
-            |--------------------------------------------------------------------------
-            | Existing Global User Must Be Active
-            |--------------------------------------------------------------------------
-            */
-
-            if (!$user->isActive()) {
-                throw new DomainException(
-                    'The existing user account is not active.'
+                ->findUserByEmail(
+                    $invitation->email
                 );
+
+            if (!$user) {
+                $name = trim(
+                    $data['name']
+                        ?? $invitation->name
+                        ?? ''
+                );
+
+                if (!$name) {
+                    throw new DomainException(
+                        'Name is required to activate this account.'
+                    );
+                }
+
+                if (empty($data['password'])) {
+                    throw new DomainException(
+                        'Password is required to activate this account.'
+                    );
+                }
+
+                $user = $this
+                    ->tenantUserRepository
+                    ->createUser([
+                        'name' => $name,
+
+                        'email' => strtolower(
+                            $invitation->email
+                        ),
+
+                        'password' =>
+                            $data['password'],
+
+                        'status' =>
+                            User::STATUS_ACTIVE,
+
+                        'is_platform_owner' =>
+                            false,
+                    ]);
+            } else {
+                if (!$user->isActive()) {
+                    throw new DomainException(
+                        'The existing user account is not active.'
+                    );
+                }
             }
-        }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Create Tenant Membership
-        |--------------------------------------------------------------------------
-        */
+            $legacyRole =
+                $role->name === 'MSP Admin'
+                    ? 'admin'
+                    : 'member';
 
-        $legacyRole =
-            $role->name === 'MSP Admin'
-                ? 'admin'
-                : 'member';
+            $membership = $this
+                ->tenantUserRepository
+                ->createMembership([
+                    'tenant_id' =>
+                        $invitation->tenant_id,
 
-        $membership = $this
-            ->tenantUserRepository
-            ->createMembership([
-                'tenant_id' =>
-                    $invitation->tenant_id,
+                    'user_id' =>
+                        $user->id,
 
-                'user_id' =>
-                    $user->id,
+                    'role' =>
+                        $legacyRole,
 
-                'role' =>
-                    $legacyRole,
-
-                'status' =>
-                    TenantUser::STATUS_ACTIVE,
-
-                'joined_at' =>
-                    now(),
-            ]);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Set Spatie Tenant Context
-        |--------------------------------------------------------------------------
-        */
-
-        $permissionRegistrar =
-            app(PermissionRegistrar::class);
-
-        $permissionRegistrar
-            ->setPermissionsTeamId(
-                $invitation->tenant_id
-            );
-
-        try {
-            $user->unsetRelation('roles');
-            $user->unsetRelation('permissions');
-
-            /*
-            |--------------------------------------------------------------------------
-            | Assign Invited Role
-            |--------------------------------------------------------------------------
-            */
-
-            $user->syncRoles([
-                $role,
-            ]);
-
-            $user->unsetRelation('roles');
-            $user->unsetRelation('permissions');
-        } finally {
-            $permissionRegistrar
-                ->setPermissionsTeamId(null);
-        }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Mark Invitation Accepted
-        |--------------------------------------------------------------------------
-        */
-
-        $invitation = $this
-            ->invitationRepository
-            ->update(
-                $invitation,
-                [
                     'status' =>
-                        TenantInvitation::STATUS_ACCEPTED,
+                        TenantUser::STATUS_ACTIVE,
 
-                    'accepted_at' =>
+                    'joined_at' =>
                         now(),
+                ]);
 
-                    'revoked_at' =>
-                        null,
-                ]
-            );
+            $permissionRegistrar =
+                app(PermissionRegistrar::class);
 
-        return [
+            $permissionRegistrar
+                ->setPermissionsTeamId(
+                    $invitation->tenant_id
+                );
 
-          'user' => $user,
-    'membership' => $membership,
-    'invitation' => $invitation,
-    'assigned_role' => $role->name,
-        ];
-    });
-}
+            try {
+                $user->unsetRelation('roles');
+                $user->unsetRelation('permissions');
 
+                $user->syncRoles([
+                    $role,
+                ]);
 
+                $user->unsetRelation('roles');
+                $user->unsetRelation('permissions');
+            } finally {
+                $permissionRegistrar
+                    ->setPermissionsTeamId(null);
+            }
 
+            $oldStatus = $invitation->status;
 
+            $invitation = $this
+                ->invitationRepository
+                ->update(
+                    $invitation,
+                    [
+                        'status' =>
+                            TenantInvitation::STATUS_ACCEPTED,
+
+                        'accepted_at' =>
+                            now(),
+
+                        'revoked_at' =>
+                            null,
+                    ]
+                );
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $invitation->tenant_id,
+                    actor: $user,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'tenant_invitation',
+                    targetId: (string) $invitation->id,
+                    targetLabel: $invitation->email,
+                    description: 'Tenant invitation was accepted.',
+                    changes: [
+                        'status' => [
+                            'from' => $oldStatus,
+                            'to' =>
+                                TenantInvitation::STATUS_ACCEPTED,
+                        ],
+                    ],
+                    metadata: [
+                        'accepted_user_id' => $user->id,
+                        'assigned_role' => $role->name,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
+            return [
+                'user' => $user,
+                'membership' => $membership,
+                'invitation' => $invitation,
+                'assigned_role' => $role->name,
+            ];
+        });
+    }
 }

@@ -34,7 +34,8 @@ class SecurityGroupResourceRestrictionController extends Controller
         }
 
         return response()->json([
-            'message' => 'Resource restrictions retrieved successfully.',
+            'message' =>
+                'Resource restrictions retrieved successfully.',
 
             'data' => [
                 'restrictions' => $restrictions
@@ -73,12 +74,14 @@ class SecurityGroupResourceRestrictionController extends Controller
 
         if (!$restriction) {
             return response()->json([
-                'message' => 'Resource restriction not found.',
+                'message' =>
+                    'Resource restriction not found.',
             ], 404);
         }
 
         return response()->json([
-            'message' => 'Resource restriction retrieved successfully.',
+            'message' =>
+                'Resource restriction retrieved successfully.',
 
             'data' => [
                 'restriction' =>
@@ -119,8 +122,12 @@ class SecurityGroupResourceRestrictionController extends Controller
                 ->create(
                     $tenantId,
                     $groupId,
-                    $request->user()->id,
-                    $validated
+                    $request->user('api'),
+                    $validated,
+                    $request->ip(),
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -129,7 +136,8 @@ class SecurityGroupResourceRestrictionController extends Controller
         }
 
         return response()->json([
-            'message' => 'Resource restriction created successfully.',
+            'message' =>
+                'Resource restriction created successfully.',
 
             'data' => [
                 'restriction' =>
@@ -161,7 +169,12 @@ class SecurityGroupResourceRestrictionController extends Controller
                     $tenantId,
                     $groupId,
                     $restrictionId,
-                    $validated
+                    $request->user('api'),
+                    $validated,
+                    $request->ip(),
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -170,7 +183,8 @@ class SecurityGroupResourceRestrictionController extends Controller
         }
 
         return response()->json([
-            'message' => 'Resource restriction updated successfully.',
+            'message' =>
+                'Resource restriction updated successfully.',
 
             'data' => [
                 'restriction' =>
@@ -182,6 +196,7 @@ class SecurityGroupResourceRestrictionController extends Controller
     }
 
     public function destroy(
+        Request $request,
         string $tenantId,
         string $groupId,
         string $restrictionId
@@ -192,7 +207,12 @@ class SecurityGroupResourceRestrictionController extends Controller
                 ->delete(
                     $tenantId,
                     $groupId,
-                    $restrictionId
+                    $restrictionId,
+                    $request->user('api'),
+                    $request->ip(),
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -201,7 +221,8 @@ class SecurityGroupResourceRestrictionController extends Controller
         }
 
         return response()->json([
-            'message' => 'Resource restriction deleted successfully.',
+            'message' =>
+                'Resource restriction deleted successfully.',
         ]);
     }
 

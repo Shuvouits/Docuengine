@@ -115,13 +115,18 @@ class TenantRoleController extends Controller
             $role = $this
                 ->tenantRoleService
                 ->create(
-                    $tenantId,
-                    [
+                    tenantId: $tenantId,
+                    data: [
                         'name' => $validated['name'],
 
                         'permissions' =>
                             $validated['permissions'] ?? [],
-                    ]
+                    ],
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -166,9 +171,14 @@ class TenantRoleController extends Controller
             $role = $this
                 ->tenantRoleService
                 ->update(
-                    $tenantId,
-                    $roleId,
-                    $validated
+                    tenantId: $tenantId,
+                    roleId: $roleId,
+                    data: $validated,
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -186,6 +196,7 @@ class TenantRoleController extends Controller
     }
 
     public function destroy(
+        Request $request,
         string $tenantId,
         int $roleId
     ): JsonResponse {
@@ -193,8 +204,13 @@ class TenantRoleController extends Controller
             $this
                 ->tenantRoleService
                 ->delete(
-                    $tenantId,
-                    $roleId
+                    tenantId: $tenantId,
+                    roleId: $roleId,
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([

@@ -33,15 +33,18 @@ class AccessReviewController extends Controller
                     AccessReview::STATUS_CANCELLED,
                 ]),
             ],
+
             'reviewer_user_id' => [
                 'nullable',
                 'uuid',
             ],
+
             'search' => [
                 'nullable',
                 'string',
                 'max:150',
             ],
+
             'per_page' => [
                 'nullable',
                 'integer',
@@ -59,7 +62,8 @@ class AccessReviewController extends Controller
             );
 
         return response()->json([
-            'message' => 'Access reviews retrieved successfully.',
+            'message' =>
+                'Access reviews retrieved successfully.',
             'data' => $reviews,
         ]);
     }
@@ -77,12 +81,14 @@ class AccessReviewController extends Controller
 
         if (!$review) {
             return response()->json([
-                'message' => 'Access review not found.',
+                'message' =>
+                    'Access review not found.',
             ], 404);
         }
 
         return response()->json([
-            'message' => 'Access review retrieved successfully.',
+            'message' =>
+                'Access review retrieved successfully.',
             'data' => $review,
         ]);
     }
@@ -97,19 +103,23 @@ class AccessReviewController extends Controller
                 'string',
                 'max:150',
             ],
+
             'reviewer_user_id' => [
                 'nullable',
                 'uuid',
             ],
+
             'due_at' => [
                 'nullable',
                 'date',
             ],
+
             'notes' => [
                 'nullable',
                 'string',
                 'max:5000',
             ],
+
             'metadata' => [
                 'nullable',
                 'array',
@@ -121,19 +131,23 @@ class AccessReviewController extends Controller
                 ->accessReviewService
                 ->createDraft(
                     $tenantId,
-                    $request->user()->id,
+                    $request->user('api'),
                     $validated,
                     $request->ip(),
-                    $request->userAgent()
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
-                'message' => $exception->getMessage(),
+                'message' =>
+                    $exception->getMessage(),
             ], 422);
         }
 
         return response()->json([
-            'message' => 'Access review created successfully.',
+            'message' =>
+                'Access review created successfully.',
             'data' => $review,
         ], 201);
     }
@@ -150,7 +164,8 @@ class AccessReviewController extends Controller
 
         if (!$review) {
             return response()->json([
-                'message' => 'Access review not found.',
+                'message' =>
+                    'Access review not found.',
             ], 404);
         }
 
@@ -159,18 +174,22 @@ class AccessReviewController extends Controller
                 ->accessReviewService
                 ->start(
                     $review,
-                    $request->user()->id,
+                    $request->user('api'),
                     $request->ip(),
-                    $request->userAgent()
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
-                'message' => $exception->getMessage(),
+                'message' =>
+                    $exception->getMessage(),
             ], 422);
         }
 
         return response()->json([
-            'message' => 'Access review started successfully.',
+            'message' =>
+                'Access review started successfully.',
             'data' => $review,
         ]);
     }
@@ -188,7 +207,8 @@ class AccessReviewController extends Controller
 
         if (!$review) {
             return response()->json([
-                'message' => 'Access review not found.',
+                'message' =>
+                    'Access review not found.',
             ], 404);
         }
 
@@ -202,11 +222,13 @@ class AccessReviewController extends Controller
                     AccessReviewItem::DECISION_CHANGE_ROLE,
                 ]),
             ],
+
             'requested_role' => [
                 'nullable',
                 'string',
                 'max:100',
             ],
+
             'notes' => [
                 'nullable',
                 'string',
@@ -221,20 +243,24 @@ class AccessReviewController extends Controller
                     $review,
                     $itemId,
                     $validated['decision'],
-                    $request->user()->id,
+                    $request->user('api'),
                     $validated['requested_role'] ?? null,
                     $validated['notes'] ?? null,
                     $request->ip(),
-                    $request->userAgent()
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
-                'message' => $exception->getMessage(),
+                'message' =>
+                    $exception->getMessage(),
             ], 422);
         }
 
         return response()->json([
-            'message' => 'Access review decision saved successfully.',
+            'message' =>
+                'Access review decision saved successfully.',
             'data' => $item,
         ]);
     }
@@ -251,7 +277,8 @@ class AccessReviewController extends Controller
 
         if (!$review) {
             return response()->json([
-                'message' => 'Access review not found.',
+                'message' =>
+                    'Access review not found.',
             ], 404);
         }
 
@@ -260,18 +287,22 @@ class AccessReviewController extends Controller
                 ->accessReviewService
                 ->complete(
                     $review,
-                    $request->user()->id,
+                    $request->user('api'),
                     $request->ip(),
-                    $request->userAgent()
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
-                'message' => $exception->getMessage(),
+                'message' =>
+                    $exception->getMessage(),
             ], 422);
         }
 
         return response()->json([
-            'message' => 'Access review completed successfully.',
+            'message' =>
+                'Access review completed successfully.',
             'data' => $review,
         ]);
     }
@@ -288,7 +319,8 @@ class AccessReviewController extends Controller
 
         if (!$review) {
             return response()->json([
-                'message' => 'Access review not found.',
+                'message' =>
+                    'Access review not found.',
             ], 404);
         }
 
@@ -297,18 +329,22 @@ class AccessReviewController extends Controller
                 ->accessReviewService
                 ->cancel(
                     $review,
-                    $request->user()->id,
+                    $request->user('api'),
                     $request->ip(),
-                    $request->userAgent()
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
-                'message' => $exception->getMessage(),
+                'message' =>
+                    $exception->getMessage(),
             ], 422);
         }
 
         return response()->json([
-            'message' => 'Access review cancelled successfully.',
+            'message' =>
+                'Access review cancelled successfully.',
             'data' => $review,
         ]);
     }

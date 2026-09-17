@@ -85,13 +85,20 @@ class SecurityGroupController extends Controller
             ],
         ]);
 
+        $actor = $request->user('api');
+
         try {
             $group = $this
                 ->securityGroupService
                 ->create(
-                    $tenantId,
-                    $request->user()->id,
-                    $validated
+                    tenantId: $tenantId,
+                    createdBy: $actor->id,
+                    data: $validated,
+                    actor: $actor,
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -134,9 +141,14 @@ class SecurityGroupController extends Controller
             $group = $this
                 ->securityGroupService
                 ->update(
-                    $tenantId,
-                    $groupId,
-                    $validated
+                    tenantId: $tenantId,
+                    groupId: $groupId,
+                    data: $validated,
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -155,15 +167,30 @@ class SecurityGroupController extends Controller
     }
 
     public function destroy(
+        Request $request,
         string $tenantId,
         string $groupId
     ): JsonResponse {
+        $validated = $request->validate([
+            'reason' => [
+                'nullable',
+                'string',
+                'max:1000',
+            ],
+        ]);
+
         try {
             $this
                 ->securityGroupService
                 ->delete(
-                    $tenantId,
-                    $groupId
+                    tenantId: $tenantId,
+                    groupId: $groupId,
+                    actor: $request->user('api'),
+                    reason: $validated['reason'] ?? null,
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -172,7 +199,7 @@ class SecurityGroupController extends Controller
         }
 
         return response()->json([
-            'message' => 'Security group deleted successfully.',
+            'message' => 'Security group archived successfully.',
         ]);
     }
 
@@ -210,6 +237,7 @@ class SecurityGroupController extends Controller
     }
 
     public function addUser(
+        Request $request,
         string $tenantId,
         string $groupId,
         string $userId
@@ -218,9 +246,14 @@ class SecurityGroupController extends Controller
             $group = $this
                 ->securityGroupService
                 ->addUser(
-                    $tenantId,
-                    $groupId,
-                    $userId
+                    tenantId: $tenantId,
+                    groupId: $groupId,
+                    userId: $userId,
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -239,6 +272,7 @@ class SecurityGroupController extends Controller
     }
 
     public function removeUser(
+        Request $request,
         string $tenantId,
         string $groupId,
         string $userId
@@ -247,9 +281,14 @@ class SecurityGroupController extends Controller
             $group = $this
                 ->securityGroupService
                 ->removeUser(
-                    $tenantId,
-                    $groupId,
-                    $userId
+                    tenantId: $tenantId,
+                    groupId: $groupId,
+                    userId: $userId,
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -264,6 +303,67 @@ class SecurityGroupController extends Controller
                 'security_group' =>
                     $this->formatGroup($group),
             ],
+        ]);
+    }
+
+    public function restore(
+        Request $request,
+        string $tenantId,
+        string $groupId
+    ): JsonResponse {
+        try {
+            $group = $this
+                ->securityGroupService
+                ->restore(
+                    tenantId: $tenantId,
+                    groupId: $groupId,
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
+                );
+        } catch (DomainException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Security group restored successfully.',
+
+            'data' => [
+                'security_group' =>
+                    $this->formatGroup($group),
+            ],
+        ]);
+    }
+
+    public function permanentlyDelete(
+        Request $request,
+        string $tenantId,
+        string $groupId
+    ): JsonResponse {
+        try {
+            $this
+                ->securityGroupService
+                ->permanentlyDelete(
+                    tenantId: $tenantId,
+                    groupId: $groupId,
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
+                );
+        } catch (DomainException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'message' => 'Security group permanently deleted successfully.',
         ]);
     }
 

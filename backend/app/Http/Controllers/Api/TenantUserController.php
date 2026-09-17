@@ -105,11 +105,19 @@ class TenantUserController extends Controller
         ]);
 
         try {
-            $result = $this->tenantUserService
-                ->create(
-                    $tenantId,
-                    $validated
-                );
+
+        $result = $this->tenantUserService
+    ->create(
+        $tenantId,
+        $validated,
+        $request->user('api'),
+        $request->ip(),
+        $request->userAgent(),
+        $request->method(),
+        $request->path()
+    );
+
+    
         } catch (DomainException $exception) {
             return response()->json([
                 'message' => $exception->getMessage(),
@@ -168,11 +176,17 @@ class TenantUserController extends Controller
         ]);
 
         try {
+
             $result = $this->tenantUserService
                 ->update(
                     $membership,
                     $tenantId,
-                    $validated
+                    $validated,
+                    $request->user('api'),
+                    $request->ip(),
+                    $request->userAgent(),
+                    $request->method(),
+                    $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -211,14 +225,22 @@ class TenantUserController extends Controller
         }
 
         try {
-            $membership = $this
-                ->tenantUserService
-                ->suspend(
-                    $membership,
-                    $request->user()->id,
-                    $request->ip(),
-                    $request->userAgent()
-                );
+
+
+        $membership = $this
+    ->tenantUserService
+    ->suspend(
+        $membership,
+        $request->user('api')->id,
+        $request->ip(),
+        $request->userAgent(),
+        $request->user('api'),
+        $request->method(),
+        $request->path()
+    );
+
+
+
         } catch (DomainException $exception) {
             return response()->json([
                 'message' => $exception->getMessage(),
@@ -254,13 +276,20 @@ class TenantUserController extends Controller
         }
 
         try {
-            $membership = $this->tenantUserService
-                ->activate(
-                    $membership,
-                    $request->user()->id,
-                    $request->ip(),
-                    $request->userAgent()
-                );
+
+           $membership = $this
+    ->tenantUserService
+    ->activate(
+        $membership,
+        $request->user('api')->id,
+        $request->ip(),
+        $request->userAgent(),
+        $request->user('api'),
+        $request->method(),
+        $request->path()
+    );
+
+
         } catch (DomainException $exception) {
             return response()->json([
                 'message' => $exception->getMessage(),

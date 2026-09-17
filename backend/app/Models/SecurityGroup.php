@@ -7,10 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SecurityGroup extends Model
 {
     use HasUuids;
+    use SoftDeletes;
 
     protected $fillable = [
         'tenant_id',
@@ -22,6 +24,7 @@ class SecurityGroup extends Model
 
     protected $casts = [
         'is_system' => 'boolean',
+        'deleted_at' => 'datetime',
     ];
 
     public function tenant(): BelongsTo
@@ -63,6 +66,14 @@ class SecurityGroup extends Model
         );
     }
 
+    public function resourceRestrictions(): HasMany
+    {
+        return $this->hasMany(
+            SecurityGroupResourceRestriction::class,
+            'security_group_id'
+        );
+    }
+
     public function scopeForTenant(
         $query,
         string $tenantId
@@ -77,16 +88,4 @@ class SecurityGroup extends Model
     {
         return $this->is_system === true;
     }
-
-
-    public function resourceRestrictions()
-{
-    return $this->hasMany(
-        SecurityGroupResourceRestriction::class,
-        'security_group_id'
-    );
-}
-
-
-
 }

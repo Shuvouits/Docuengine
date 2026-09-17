@@ -14,11 +14,15 @@ class TenantConfigurationController extends Controller
     public function __construct(
         protected TenantService $tenantService,
         protected TenantConfigurationService $tenantConfigurationService
-    ) {}
+    ) {
+    }
 
-    public function show(string $tenantId): JsonResponse
-    {
-        $tenant = $this->tenantService->getById($tenantId);
+    public function show(
+        string $tenantId
+    ): JsonResponse {
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -26,7 +30,9 @@ class TenantConfigurationController extends Controller
             ], 404);
         }
 
-        $tenant = $this->tenantConfigurationService->get($tenant);
+        $tenant = $this
+            ->tenantConfigurationService
+            ->get($tenant);
 
         return response()->json([
             'message' => 'Tenant configuration retrieved successfully.',
@@ -38,7 +44,9 @@ class TenantConfigurationController extends Controller
         Request $request,
         string $tenantId
     ): JsonResponse {
-        $tenant = $this->tenantService->getById($tenantId);
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -52,7 +60,10 @@ class TenantConfigurationController extends Controller
                 'string',
                 Rule::in(
                     array_keys(
-                        config('docuengine.supported_locales', [])
+                        config(
+                            'docuengine.supported_locales',
+                            []
+                        )
                     )
                 ),
             ],
@@ -65,10 +76,16 @@ class TenantConfigurationController extends Controller
             ],
         ]);
 
-        $tenant = $this->tenantConfigurationService
+        $tenant = $this
+            ->tenantConfigurationService
             ->updateGeneral(
-                $tenant,
-                $validated
+                tenant: $tenant,
+                data: $validated,
+                actor: $request->user('api'),
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+                requestMethod: $request->method(),
+                requestPath: $request->path()
             );
 
         return response()->json([
@@ -81,7 +98,9 @@ class TenantConfigurationController extends Controller
         Request $request,
         string $tenantId
     ): JsonResponse {
-        $tenant = $this->tenantService->getById($tenantId);
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -90,61 +109,76 @@ class TenantConfigurationController extends Controller
         }
 
         $validated = $request->validate([
-    'date_format' => [
-        'sometimes',
-        'string',
-        Rule::in(
-            array_keys(
-                config('docuengine.date_formats', [])
-            )
-        ),
-    ],
+            'date_format' => [
+                'sometimes',
+                'string',
+                Rule::in(
+                    array_keys(
+                        config(
+                            'docuengine.date_formats',
+                            []
+                        )
+                    )
+                ),
+            ],
 
-    'time_format' => [
-        'sometimes',
-        'string',
-        Rule::in(
-            array_keys(
-                config('docuengine.time_formats', [])
-            )
-        ),
-    ],
+            'time_format' => [
+                'sometimes',
+                'string',
+                Rule::in(
+                    array_keys(
+                        config(
+                            'docuengine.time_formats',
+                            []
+                        )
+                    )
+                ),
+            ],
 
-    'week_start' => [
-        'sometimes',
-        'string',
-        Rule::in(
-            array_keys(
-                config('docuengine.week_start_options', [])
-            )
-        ),
-    ],
+            'week_start' => [
+                'sometimes',
+                'string',
+                Rule::in(
+                    array_keys(
+                        config(
+                            'docuengine.week_start_options',
+                            []
+                        )
+                    )
+                ),
+            ],
 
-    'name_prefix' => [
-        'sometimes',
-        'nullable',
-        'string',
-        'max:100',
-    ],
+            'name_prefix' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:100',
+            ],
 
-    'name_suffix' => [
-        'sometimes',
-        'nullable',
-        'string',
-        'max:100',
-    ],
+            'name_suffix' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:100',
+            ],
 
-    'preferences' => [
-        'sometimes',
-        'nullable',
-        'array',
-    ],
-]);
+            'preferences' => [
+                'sometimes',
+                'nullable',
+                'array',
+            ],
+        ]);
 
-        $tenant = $this->tenantConfigurationService
+        $tenant = $this
+            ->tenantConfigurationService
             ->updateSettings(
-                $tenant,
-                $validated
+                tenant: $tenant,
+                data: $validated,
+                actor: $request->user('api'),
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+                requestMethod: $request->method(),
+                requestPath: $request->path()
             );
 
         return response()->json([
@@ -153,13 +187,13 @@ class TenantConfigurationController extends Controller
         ]);
     }
 
-
-
     public function updateBranding(
         Request $request,
         string $tenantId
     ): JsonResponse {
-        $tenant = $this->tenantService->getById($tenantId);
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -167,37 +201,34 @@ class TenantConfigurationController extends Controller
             ], 404);
         }
 
-
         $validated = $request->validate([
-    'display_name' => [
-        'sometimes',
-        'nullable',
-        'string',
-        'max:255',
-    ],
+            'display_name' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:255',
+            ],
 
-    'primary_color' => [
-        'sometimes',
-        'nullable',
-        'string',
-        'regex:/^#[0-9A-Fa-f]{6}$/',
-    ],
+            'primary_color' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'regex:/^#[0-9A-Fa-f]{6}$/',
+            ],
 
-    'secondary_color' => [
-        'sometimes',
-        'nullable',
-        'string',
-        'regex:/^#[0-9A-Fa-f]{6}$/',
-    ],
+            'secondary_color' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'regex:/^#[0-9A-Fa-f]{6}$/',
+            ],
 
-    'custom_styles' => [
-        'sometimes',
-        'nullable',
-        'array',
-    ],
-]);
-
-
+            'custom_styles' => [
+                'sometimes',
+                'nullable',
+                'array',
+            ],
+        ]);
 
         if (empty($validated)) {
             return response()->json([
@@ -205,10 +236,16 @@ class TenantConfigurationController extends Controller
             ], 422);
         }
 
-        $tenant = $this->tenantConfigurationService
+        $tenant = $this
+            ->tenantConfigurationService
             ->updateBranding(
-                $tenant,
-                $validated
+                tenant: $tenant,
+                data: $validated,
+                actor: $request->user('api'),
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+                requestMethod: $request->method(),
+                requestPath: $request->path()
             );
 
         return response()->json([
@@ -217,14 +254,14 @@ class TenantConfigurationController extends Controller
         ]);
     }
 
-
-
     public function updateFeatureFlag(
         Request $request,
         string $tenantId,
         string $key
     ): JsonResponse {
-        $tenant = $this->tenantService->getById($tenantId);
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -237,17 +274,24 @@ class TenantConfigurationController extends Controller
                 'required',
                 'boolean',
             ],
+
             'config' => [
                 'nullable',
                 'array',
             ],
         ]);
 
-        $tenant = $this->tenantConfigurationService
+        $tenant = $this
+            ->tenantConfigurationService
             ->updateFeatureFlag(
-                $tenant,
-                $key,
-                $validated
+                tenant: $tenant,
+                key: $key,
+                data: $validated,
+                actor: $request->user('api'),
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+                requestMethod: $request->method(),
+                requestPath: $request->path()
             );
 
         return response()->json([
@@ -256,15 +300,13 @@ class TenantConfigurationController extends Controller
         ]);
     }
 
-
-
-
-
     public function updateTerminology(
         Request $request,
         string $tenantId
     ): JsonResponse {
-        $tenant = $this->tenantService->getById($tenantId);
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -279,30 +321,35 @@ class TenantConfigurationController extends Controller
                 'min:1',
                 'max:100',
             ],
+
             'company' => [
                 'sometimes',
                 'string',
                 'min:1',
                 'max:100',
             ],
+
             'asset' => [
                 'sometimes',
                 'string',
                 'min:1',
                 'max:100',
             ],
+
             'contact' => [
                 'sometimes',
                 'string',
                 'min:1',
                 'max:100',
             ],
+
             'document' => [
                 'sometimes',
                 'string',
                 'min:1',
                 'max:100',
             ],
+
             'knowledge_base' => [
                 'sometimes',
                 'string',
@@ -317,10 +364,16 @@ class TenantConfigurationController extends Controller
             ], 422);
         }
 
-        $tenant = $this->tenantConfigurationService
+        $tenant = $this
+            ->tenantConfigurationService
             ->updateTerminology(
-                $tenant,
-                $validated
+                tenant: $tenant,
+                data: $validated,
+                actor: $request->user('api'),
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+                requestMethod: $request->method(),
+                requestPath: $request->path()
             );
 
         return response()->json([
@@ -329,12 +382,13 @@ class TenantConfigurationController extends Controller
         ]);
     }
 
-
     public function updateOrganization(
         Request $request,
         string $tenantId
     ): JsonResponse {
-        $tenant = $this->tenantService->getById($tenantId);
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -365,10 +419,16 @@ class TenantConfigurationController extends Controller
             ], 422);
         }
 
-        $tenant = $this->tenantConfigurationService
+        $tenant = $this
+            ->tenantConfigurationService
             ->updateOrganizationIdentity(
-                $tenant,
-                $validated
+                tenant: $tenant,
+                data: $validated,
+                actor: $request->user('api'),
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+                requestMethod: $request->method(),
+                requestPath: $request->path()
             );
 
         return response()->json([
@@ -377,13 +437,13 @@ class TenantConfigurationController extends Controller
         ]);
     }
 
-
-
     public function uploadBrandingAssets(
         Request $request,
         string $tenantId
     ): JsonResponse {
-        $tenant = $this->tenantService->getById($tenantId);
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
         if (!$tenant) {
             return response()->json([
@@ -417,11 +477,17 @@ class TenantConfigurationController extends Controller
             ], 422);
         }
 
-        $tenant = $this->tenantConfigurationService
+        $tenant = $this
+            ->tenantConfigurationService
             ->uploadBrandingAssets(
-                $tenant,
-                $request->file('logo'),
-                $request->file('favicon')
+                tenant: $tenant,
+                logo: $request->file('logo'),
+                favicon: $request->file('favicon'),
+                actor: $request->user('api'),
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+                requestMethod: $request->method(),
+                requestPath: $request->path()
             );
 
         return response()->json([
@@ -430,60 +496,58 @@ class TenantConfigurationController extends Controller
         ]);
     }
 
-
     public function regionalOptions(
-    string $tenantId
-): JsonResponse {
-    $tenant = $this->tenantService->getById($tenantId);
+        string $tenantId
+    ): JsonResponse {
+        $tenant = $this
+            ->tenantService
+            ->getById($tenantId);
 
-    if (!$tenant) {
+        if (!$tenant) {
+            return response()->json([
+                'message' => 'Tenant not found.',
+            ], 404);
+        }
+
+        $settings = $tenant->settings;
+
         return response()->json([
-            'message' => 'Tenant not found.',
-        ], 404);
+            'message' => 'Regional setting options retrieved successfully.',
+
+            'data' => [
+                'current' => [
+                    'locale' => $tenant->locale,
+                    'timezone' => $tenant->timezone,
+                    'date_format' => $settings?->date_format,
+                    'time_format' => $settings?->time_format,
+                    'week_start' => $settings?->week_start,
+                ],
+
+                'options' => [
+                    'locales' => config(
+                        'docuengine.supported_locales',
+                        []
+                    ),
+
+                    'timezones' =>
+                        \DateTimeZone::listIdentifiers(),
+
+                    'date_formats' => config(
+                        'docuengine.date_formats',
+                        []
+                    ),
+
+                    'time_formats' => config(
+                        'docuengine.time_formats',
+                        []
+                    ),
+
+                    'week_start' => config(
+                        'docuengine.week_start_options',
+                        []
+                    ),
+                ],
+            ],
+        ]);
     }
-
-    $settings = $tenant->settings;
-
-    return response()->json([
-        'message' => 'Regional setting options retrieved successfully.',
-
-        'data' => [
-            'current' => [
-                'locale' => $tenant->locale,
-                'timezone' => $tenant->timezone,
-                'date_format' => $settings?->date_format,
-                'time_format' => $settings?->time_format,
-                'week_start' => $settings?->week_start,
-            ],
-
-            'options' => [
-                'locales' => config(
-                    'docuengine.supported_locales',
-                    []
-                ),
-
-                'timezones' => \DateTimeZone::listIdentifiers(),
-
-                'date_formats' => config(
-                    'docuengine.date_formats',
-                    []
-                ),
-
-                'time_formats' => config(
-                    'docuengine.time_formats',
-                    []
-                ),
-
-                'week_start' => config(
-                    'docuengine.week_start_options',
-                    []
-                ),
-            ],
-        ],
-    ]);
-}
-
-
-
-
 }

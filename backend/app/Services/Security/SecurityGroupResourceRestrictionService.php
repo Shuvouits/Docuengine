@@ -1,12 +1,13 @@
-
 <?php
-
 
 namespace App\Services\Security;
 
+use App\Models\AuditEvent;
 use App\Models\SecurityGroupResourceRestriction;
+use App\Models\User;
 use App\Repositories\SecurityGroupRepository;
 use App\Repositories\SecurityGroupResourceRestrictionRepository;
+use App\Services\Audit\AuditEventService;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,8 @@ class SecurityGroupResourceRestrictionService
 {
     public function __construct(
         private SecurityGroupResourceRestrictionRepository $restrictionRepository,
-        private SecurityGroupRepository $securityGroupRepository
+        private SecurityGroupRepository $securityGroupRepository,
+        private AuditEventService $auditEventService
     ) {
     }
 
@@ -66,8 +68,12 @@ class SecurityGroupResourceRestrictionService
     public function create(
         string $tenantId,
         string $groupId,
-        string $createdBy,
-        array $data
+        User $actor,
+        array $data,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): SecurityGroupResourceRestriction {
         $this->requireGroup(
             $tenantId,
@@ -112,38 +118,78 @@ class SecurityGroupResourceRestrictionService
         return DB::transaction(function () use (
             $tenantId,
             $groupId,
-            $createdBy,
+            $actor,
             $resourceType,
             $resourceId,
-            $accessLevel
+            $accessLevel,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $restriction = $this
                 ->restrictionRepository
                 ->create([
                     'tenant_id' => $tenantId,
-
-                    'security_group_id' =>
-                        $groupId,
-
-                    'resource_type' =>
-                        $resourceType,
-
-                    'resource_id' =>
-                        $resourceId,
-
-                    'access_level' =>
-                        $accessLevel,
-
-                    'created_by' =>
-                        $createdBy,
+                    'security_group_id' => $groupId,
+                    'resource_type' => $resourceType,
+                    'resource_id' => $resourceId,
+                    'access_level' => $accessLevel,
+                    'created_by' => $actor->id,
                 ]);
 
-            return $this
+            $restriction = $this
                 ->restrictionRepository
                 ->findByTenantAndId(
                     $tenantId,
                     $restriction->id
                 );
+
+            if (!$restriction) {
+                throw new DomainException(
+                    'Resource restriction could not be retrieved.'
+                );
+            }
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $tenantId,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_CREATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'security_group_resource_restriction',
+                    targetId: (string) $restriction->id,
+                    targetLabel: 'Resource Restriction',
+                    description: 'Security group resource restriction was created.',
+                    changes: [
+                        'security_group_id' => [
+                            'from' => null,
+                            'to' => $groupId,
+                        ],
+                        'resource_type' => [
+                            'from' => null,
+                            'to' => $resourceType,
+                        ],
+                        'resource_id' => [
+                            'from' => null,
+                            'to' => $resourceId,
+                        ],
+                        'access_level' => [
+                            'from' => null,
+                            'to' => $accessLevel,
+                        ],
+                    ],
+                    metadata: [
+                        'security_group_id' => $groupId,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
+            return $restriction;
         });
     }
 
@@ -151,7 +197,12 @@ class SecurityGroupResourceRestrictionService
         string $tenantId,
         string $groupId,
         string $restrictionId,
-        array $data
+        User $actor,
+        array $data,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): SecurityGroupResourceRestriction {
         $this->requireGroup(
             $tenantId,
@@ -192,23 +243,85 @@ class SecurityGroupResourceRestrictionService
             return $restriction;
         }
 
+        $beforeAccessLevel =
+            $restriction->access_level;
+
+        $afterAccessLevel =
+            $updateData['access_level'];
+
+        if (
+            $beforeAccessLevel ===
+            $afterAccessLevel
+        ) {
+            return $restriction;
+        }
+
         return DB::transaction(function () use (
             $restriction,
-            $updateData
+            $updateData,
+            $tenantId,
+            $groupId,
+            $actor,
+            $beforeAccessLevel,
+            $afterAccessLevel,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
-            return $this
+            $restriction = $this
                 ->restrictionRepository
                 ->update(
                     $restriction,
                     $updateData
                 );
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $tenantId,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'security_group_resource_restriction',
+                    targetId: (string) $restriction->id,
+                    targetLabel: 'Resource Restriction',
+                    description: 'Security group resource restriction was updated.',
+                    changes: [
+                        'access_level' => [
+                            'from' => $beforeAccessLevel,
+                            'to' => $afterAccessLevel,
+                        ],
+                    ],
+                    metadata: [
+                        'security_group_id' =>
+                            $groupId,
+
+                        'resource_type' =>
+                            $restriction->resource_type,
+
+                        'resource_id' =>
+                            $restriction->resource_id,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
+            return $restriction;
         });
     }
 
     public function delete(
         string $tenantId,
         string $groupId,
-        string $restrictionId
+        string $restrictionId,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): void {
         $this->requireGroup(
             $tenantId,
@@ -231,13 +344,68 @@ class SecurityGroupResourceRestrictionService
             );
         }
 
+        $snapshot = [
+            'security_group_id' =>
+                $restriction->security_group_id,
+
+            'resource_type' =>
+                $restriction->resource_type,
+
+            'resource_id' =>
+                $restriction->resource_id,
+
+            'access_level' =>
+                $restriction->access_level,
+        ];
+
         DB::transaction(function () use (
-            $restriction
+            $restriction,
+            $tenantId,
+            $groupId,
+            $actor,
+            $snapshot,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
+            $restrictionId =
+                (string) $restriction->id;
+
             $this
                 ->restrictionRepository
                 ->delete(
                     $restriction
+                );
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $tenantId,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_DELETED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'security_group_resource_restriction',
+                    targetId: $restrictionId,
+                    targetLabel: 'Resource Restriction',
+                    description: 'Security group resource restriction was deleted.',
+                    changes: [
+                        'deleted' => [
+                            'from' => false,
+                            'to' => true,
+                        ],
+                    ],
+                    metadata: [
+                        'security_group_id' =>
+                            $groupId,
+
+                        'snapshot' =>
+                            $snapshot,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
                 );
         });
     }

@@ -4,11 +4,14 @@ namespace App\Services\Security;
 
 use App\Models\AccessReview;
 use App\Models\AccessReviewItem;
+use App\Models\AuditEvent;
 use App\Models\SecurityEvent;
 use App\Models\TenantUser;
+use App\Models\User;
 use App\Repositories\AccessReviewItemRepository;
 use App\Repositories\AccessReviewRepository;
 use App\Repositories\TenantUserRepository;
+use App\Services\Audit\AuditEventService;
 use App\Services\Tenant\TenantUserService;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -21,7 +24,8 @@ class AccessReviewService
         private AccessReviewItemRepository $accessReviewItemRepository,
         private TenantUserRepository $tenantUserRepository,
         private TenantUserService $tenantUserService,
-        private SecurityEventService $securityEventService
+        private SecurityEventService $securityEventService,
+        private AuditEventService $auditEventService
     ) {
     }
 
@@ -58,10 +62,12 @@ class AccessReviewService
 
     public function createDraft(
         string $tenantId,
-        string $createdByUserId,
+        User $actor,
         array $data,
         ?string $ipAddress = null,
-        ?string $userAgent = null
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): AccessReview {
         $name = trim(
             $data['name'] ?? ''
@@ -95,45 +101,91 @@ class AccessReviewService
             }
         }
 
-        $accessReview = $this
-            ->accessReviewRepository
-            ->create([
-                'tenant_id' => $tenantId,
-                'name' => $name,
-                'status' => AccessReview::STATUS_DRAFT,
-                'reviewer_user_id' => $reviewerUserId,
-                'created_by_user_id' => $createdByUserId,
-                'due_at' => $data['due_at'] ?? null,
-                'notes' => $data['notes'] ?? null,
-                'metadata' => $data['metadata'] ?? null,
-            ]);
+        return DB::transaction(function () use (
+            $tenantId,
+            $actor,
+            $data,
+            $name,
+            $reviewerUserId,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
+        ) {
+            $accessReview = $this
+                ->accessReviewRepository
+                ->create([
+                    'tenant_id' => $tenantId,
+                    'name' => $name,
+                    'status' => AccessReview::STATUS_DRAFT,
+                    'reviewer_user_id' => $reviewerUserId,
+                    'created_by_user_id' => $actor->id,
+                    'due_at' => $data['due_at'] ?? null,
+                    'notes' => $data['notes'] ?? null,
+                    'metadata' => $data['metadata'] ?? null,
+                ]);
 
-        $this
-            ->securityEventService
-            ->record(
-                eventType: 'access_review.created',
-                category: SecurityEventService::CATEGORY_SECURITY,
-                tenantId: $tenantId,
-                actorUserId: $createdByUserId,
-                subjectUserId: null,
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-                description: 'Access review was created.',
-                metadata: [
-                    'access_review_id' => $accessReview->id,
-                    'name' => $accessReview->name,
-                    'status' => $accessReview->status,
-                ]
-            );
+            $this
+                ->securityEventService
+                ->record(
+                    eventType: 'access_review.created',
+                    category: SecurityEventService::CATEGORY_SECURITY,
+                    tenantId: $tenantId,
+                    actorUserId: $actor->id,
+                    subjectUserId: null,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    description: 'Access review was created.',
+                    metadata: [
+                        'access_review_id' => $accessReview->id,
+                        'name' => $accessReview->name,
+                        'status' => $accessReview->status,
+                    ]
+                );
 
-        return $accessReview;
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $tenantId,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_CREATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'access_review',
+                    targetId: (string) $accessReview->id,
+                    targetLabel: $accessReview->name,
+                    description: 'Access review was created.',
+                    changes: [
+                        'name' => [
+                            'from' => null,
+                            'to' => $accessReview->name,
+                        ],
+                        'status' => [
+                            'from' => null,
+                            'to' => $accessReview->status,
+                        ],
+                        'reviewer_user_id' => [
+                            'from' => null,
+                            'to' => $accessReview->reviewer_user_id,
+                        ],
+                    ],
+                    metadata: null,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
+            return $accessReview;
+        });
     }
 
     public function start(
         AccessReview $accessReview,
-        string $actorUserId,
+        User $actor,
         ?string $ipAddress = null,
-        ?string $userAgent = null
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): AccessReview {
         if (!$accessReview->isDraft()) {
             throw new DomainException(
@@ -153,11 +205,18 @@ class AccessReviewService
             );
         }
 
+        $beforeStatus = $accessReview->status;
         $itemCount = 0;
 
         DB::transaction(function () use (
             $accessReview,
             $memberships,
+            $actor,
+            $beforeStatus,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath,
             &$itemCount
         ) {
             $items = [];
@@ -231,6 +290,32 @@ class AccessReviewService
                         'started_at' => now(),
                     ]
                 );
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $accessReview->tenant_id,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'access_review',
+                    targetId: (string) $accessReview->id,
+                    targetLabel: $accessReview->name,
+                    description: 'Access review was started.',
+                    changes: [
+                        'status' => [
+                            'from' => $beforeStatus,
+                            'to' => AccessReview::STATUS_IN_PROGRESS,
+                        ],
+                    ],
+                    metadata: [
+                        'review_items' => $itemCount,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
         });
 
         $this
@@ -239,7 +324,7 @@ class AccessReviewService
                 eventType: 'access_review.started',
                 category: SecurityEventService::CATEGORY_SECURITY,
                 tenantId: $accessReview->tenant_id,
-                actorUserId: $actorUserId,
+                actorUserId: $actor->id,
                 subjectUserId: null,
                 ipAddress: $ipAddress,
                 userAgent: $userAgent,
@@ -260,11 +345,13 @@ class AccessReviewService
         AccessReview $accessReview,
         string $itemId,
         string $decision,
-        string $reviewedByUserId,
+        User $actor,
         ?string $requestedRole = null,
         ?string $notes = null,
         ?string $ipAddress = null,
-        ?string $userAgent = null
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): AccessReviewItem {
         if (!$accessReview->isInProgress()) {
             throw new DomainException(
@@ -327,16 +414,23 @@ class AccessReviewService
             ? trim($requestedRole)
             : null;
 
+        $beforeDecision = $item->decision;
+        $beforeRequestedRole = $item->requested_role;
+
         DB::transaction(function () use (
             $accessReview,
             $item,
             $membership,
             $decision,
-            $reviewedByUserId,
+            $actor,
             $requestedRole,
             $notes,
+            $beforeDecision,
+            $beforeRequestedRole,
             $ipAddress,
-            $userAgent
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             if (
                 $decision ===
@@ -350,7 +444,7 @@ class AccessReviewService
                         ->tenantUserService
                         ->suspend(
                             $membership,
-                            $reviewedByUserId,
+                            $actor->id,
                             $ipAddress,
                             $userAgent
                         );
@@ -399,10 +493,59 @@ class AccessReviewService
                                 ? $requestedRole
                                 : null,
                         'reviewed_by_user_id' =>
-                            $reviewedByUserId,
+                            $actor->id,
                         'reviewed_at' => now(),
                         'decision_notes' => $notes,
                     ]
+                );
+
+            $changes = [
+                'decision' => [
+                    'from' => $beforeDecision,
+                    'to' => $decision,
+                ],
+            ];
+
+            $afterRequestedRole =
+                $decision ===
+                AccessReviewItem::DECISION_CHANGE_ROLE
+                    ? $requestedRole
+                    : null;
+
+            if (
+                $beforeRequestedRole !==
+                $afterRequestedRole
+            ) {
+                $changes['requested_role'] = [
+                    'from' => $beforeRequestedRole,
+                    'to' => $afterRequestedRole,
+                ];
+            }
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $accessReview->tenant_id,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'access_review_item',
+                    targetId: (string) $item->id,
+                    targetLabel: 'Access Review Item',
+                    description: 'Access review decision was recorded.',
+                    changes: $changes,
+                    metadata: [
+                        'access_review_id' =>
+                            $accessReview->id,
+                        'subject_user_id' =>
+                            $item->subject_user_id,
+                        'previous_role' =>
+                            $item->current_role,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
                 );
 
             $this
@@ -411,7 +554,7 @@ class AccessReviewService
                     eventType: 'access_review.item.reviewed',
                     category: SecurityEventService::CATEGORY_SECURITY,
                     tenantId: $accessReview->tenant_id,
-                    actorUserId: $reviewedByUserId,
+                    actorUserId: $actor->id,
                     subjectUserId: $item->subject_user_id,
                     severity:
                         $decision ===
@@ -430,10 +573,7 @@ class AccessReviewService
                         'previous_role' =>
                             $item->current_role,
                         'requested_role' =>
-                            $decision ===
-                            AccessReviewItem::DECISION_CHANGE_ROLE
-                                ? $requestedRole
-                                : null,
+                            $afterRequestedRole,
                     ]
                 );
         });
@@ -457,9 +597,11 @@ class AccessReviewService
 
     public function complete(
         AccessReview $accessReview,
-        string $actorUserId,
+        User $actor,
         ?string $ipAddress = null,
-        ?string $userAgent = null
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): AccessReview {
         if (!$accessReview->isInProgress()) {
             throw new DomainException(
@@ -480,16 +622,52 @@ class AccessReviewService
             );
         }
 
-        $accessReview = $this
-            ->accessReviewRepository
-            ->update(
-                $accessReview,
-                [
-                    'status' =>
-                        AccessReview::STATUS_COMPLETED,
-                    'completed_at' => now(),
-                ]
-            );
+        $beforeStatus = $accessReview->status;
+
+        DB::transaction(function () use (
+            &$accessReview,
+            $actor,
+            $beforeStatus,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
+        ) {
+            $accessReview = $this
+                ->accessReviewRepository
+                ->update(
+                    $accessReview,
+                    [
+                        'status' =>
+                            AccessReview::STATUS_COMPLETED,
+                        'completed_at' => now(),
+                    ]
+                );
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $accessReview->tenant_id,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'access_review',
+                    targetId: (string) $accessReview->id,
+                    targetLabel: $accessReview->name,
+                    description: 'Access review was completed.',
+                    changes: [
+                        'status' => [
+                            'from' => $beforeStatus,
+                            'to' => AccessReview::STATUS_COMPLETED,
+                        ],
+                    ],
+                    metadata: null,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+        });
 
         $this
             ->securityEventService
@@ -497,7 +675,7 @@ class AccessReviewService
                 eventType: 'access_review.completed',
                 category: SecurityEventService::CATEGORY_SECURITY,
                 tenantId: $accessReview->tenant_id,
-                actorUserId: $actorUserId,
+                actorUserId: $actor->id,
                 subjectUserId: null,
                 ipAddress: $ipAddress,
                 userAgent: $userAgent,
@@ -516,9 +694,11 @@ class AccessReviewService
 
     public function cancel(
         AccessReview $accessReview,
-        string $actorUserId,
+        User $actor,
         ?string $ipAddress = null,
-        ?string $userAgent = null
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): AccessReview {
         if (
             $accessReview->isCompleted() ||
@@ -529,15 +709,51 @@ class AccessReviewService
             );
         }
 
-        $accessReview = $this
-            ->accessReviewRepository
-            ->update(
-                $accessReview,
-                [
-                    'status' =>
-                        AccessReview::STATUS_CANCELLED,
-                ]
-            );
+        $beforeStatus = $accessReview->status;
+
+        DB::transaction(function () use (
+            &$accessReview,
+            $actor,
+            $beforeStatus,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
+        ) {
+            $accessReview = $this
+                ->accessReviewRepository
+                ->update(
+                    $accessReview,
+                    [
+                        'status' =>
+                            AccessReview::STATUS_CANCELLED,
+                    ]
+                );
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $accessReview->tenant_id,
+                    actor: $actor,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'access_review',
+                    targetId: (string) $accessReview->id,
+                    targetLabel: $accessReview->name,
+                    description: 'Access review was cancelled.',
+                    changes: [
+                        'status' => [
+                            'from' => $beforeStatus,
+                            'to' => AccessReview::STATUS_CANCELLED,
+                        ],
+                    ],
+                    metadata: null,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+        });
 
         $this
             ->securityEventService
@@ -545,7 +761,7 @@ class AccessReviewService
                 eventType: 'access_review.cancelled',
                 category: SecurityEventService::CATEGORY_SECURITY,
                 tenantId: $accessReview->tenant_id,
-                actorUserId: $actorUserId,
+                actorUserId: $actor->id,
                 subjectUserId: null,
                 severity: SecurityEvent::SEVERITY_WARNING,
                 ipAddress: $ipAddress,

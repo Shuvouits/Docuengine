@@ -2,10 +2,12 @@
 
 namespace App\Services\Tenant;
 
+use App\Models\AuditEvent;
 use App\Models\SecurityEvent;
 use App\Models\TenantUser;
 use App\Models\User;
 use App\Repositories\TenantUserRepository;
+use App\Services\Audit\AuditEventService;
 use App\Services\Security\SecurityEventService;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
@@ -15,7 +17,8 @@ class TenantUserService
 {
     public function __construct(
         protected TenantUserRepository $tenantUserRepository,
-        protected SecurityEventService $securityEventService
+        protected SecurityEventService $securityEventService,
+        protected AuditEventService $auditEventService
     ) {
     }
 
@@ -49,7 +52,12 @@ class TenantUserService
 
     public function create(
         string $tenantId,
-        array $data
+        array $data,
+        ?User $authenticatedUser = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): array {
         $role = $this
             ->tenantUserRepository
@@ -67,7 +75,12 @@ class TenantUserService
         return DB::transaction(function () use (
             $tenantId,
             $data,
-            $role
+            $role,
+            $authenticatedUser,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $user = $this
                 ->tenantUserRepository
@@ -81,9 +94,10 @@ class TenantUserService
                     'is_platform_owner' => false,
                 ]);
 
-            $legacyRole = $role->name === 'MSP Admin'
-                ? 'admin'
-                : 'member';
+            $legacyRole =
+                $role->name === 'MSP Admin'
+                    ? 'admin'
+                    : 'member';
 
             $membership = $this
                 ->tenantUserRepository
@@ -100,6 +114,39 @@ class TenantUserService
             $user->unsetRelation('roles');
             $user->unsetRelation('permissions');
 
+            /*
+            |--------------------------------------------------------------------------
+            | Audit Event
+            |--------------------------------------------------------------------------
+            |
+            | Never store passwords or password hashes in audit metadata.
+            |
+            */
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $tenantId,
+                    actor: $authenticatedUser,
+                    action: AuditEvent::ACTION_CREATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'user',
+                    targetId: $user->id,
+                    targetLabel: $user->name,
+                    description: 'Tenant user was created.',
+                    metadata: [
+                        'membership_id' => $membership->id,
+                        'email' => $user->email,
+                        'role' => $role->name,
+                        'membership_status' =>
+                            $membership->status,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
             return [
                 'user' => $user,
                 'membership' => $membership,
@@ -110,7 +157,12 @@ class TenantUserService
     public function update(
         TenantUser $membership,
         string $tenantId,
-        array $data
+        array $data,
+        ?User $authenticatedUser = null,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): array {
         $user = $membership->user;
 
@@ -119,6 +171,22 @@ class TenantUserService
                 'Tenant user not found.'
             );
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Snapshot Before Changes
+        |--------------------------------------------------------------------------
+        */
+
+        $originalName = $user->name;
+        $originalEmail = $user->email;
+
+        $user->unsetRelation('roles');
+        $user->unsetRelation('permissions');
+
+        $originalRole = $user
+            ->getRoleNames()
+            ->first();
 
         $role = null;
 
@@ -140,8 +208,17 @@ class TenantUserService
         return DB::transaction(function () use (
             $user,
             $membership,
+            $tenantId,
             $data,
-            $role
+            $role,
+            $originalName,
+            $originalEmail,
+            $originalRole,
+            $authenticatedUser,
+            $ipAddress,
+            $userAgent,
+            $requestMethod,
+            $requestPath
         ) {
             $userData = [];
 
@@ -191,6 +268,77 @@ class TenantUserService
             $user->unsetRelation('roles');
             $user->unsetRelation('permissions');
 
+            /*
+            |--------------------------------------------------------------------------
+            | Build Change Summary
+            |--------------------------------------------------------------------------
+            */
+
+            $changes = [];
+
+            if (
+                array_key_exists('name', $data) &&
+                $originalName !== $user->name
+            ) {
+                $changes['name'] = [
+                    'from' => $originalName,
+                    'to' => $user->name,
+                ];
+            }
+
+            if (
+                array_key_exists('email', $data) &&
+                $originalEmail !== $user->email
+            ) {
+                $changes['email'] = [
+                    'from' => $originalEmail,
+                    'to' => $user->email,
+                ];
+            }
+
+            $newRole =
+                $role?->name ?? $originalRole;
+
+            if (
+                $role &&
+                $originalRole !== $newRole
+            ) {
+                $changes['role'] = [
+                    'from' => $originalRole,
+                    'to' => $newRole,
+                ];
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | Audit Event
+            |--------------------------------------------------------------------------
+            */
+
+            if (!empty($changes)) {
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $authenticatedUser,
+                        action: AuditEvent::ACTION_UPDATED,
+                        category: AuditEvent::CATEGORY_ACCESS,
+                        targetType: 'user',
+                        targetId: $user->id,
+                        targetLabel: $user->name,
+                        description: 'Tenant user was updated.',
+                        changes: $changes,
+                        metadata: [
+                            'membership_id' =>
+                                $membership->id,
+                        ],
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+            }
+
             return [
                 'user' => $user,
                 'membership' => $membership,
@@ -202,7 +350,10 @@ class TenantUserService
         TenantUser $membership,
         string $authenticatedUserId,
         ?string $ipAddress = null,
-        ?string $userAgent = null
+        ?string $userAgent = null,
+        ?User $authenticatedUser = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): TenantUser {
         if (
             $membership->user_id ===
@@ -222,46 +373,108 @@ class TenantUserService
             );
         }
 
-        $updatedMembership = $this
-            ->tenantUserRepository
-            ->updateMembership(
-                $membership,
-                [
-                    'status' =>
-                        TenantUser::STATUS_SUSPENDED,
-                ]
-            );
+        return DB::transaction(function () use (
+            $membership,
+            $authenticatedUserId,
+            $ipAddress,
+            $userAgent,
+            $authenticatedUser,
+            $requestMethod,
+            $requestPath
+        ) {
+            $updatedMembership = $this
+                ->tenantUserRepository
+                ->updateMembership(
+                    $membership,
+                    [
+                        'status' =>
+                            TenantUser::STATUS_SUSPENDED,
+                    ]
+                );
 
-        $this
-            ->securityEventService
-            ->record(
-                eventType: 'user.suspended',
-                category: SecurityEventService::CATEGORY_USER,
-                tenantId: $membership->tenant_id,
-                actorUserId: $authenticatedUserId,
-                subjectUserId: $membership->user_id,
-                severity: SecurityEvent::SEVERITY_WARNING,
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-                description: 'Tenant user access was suspended.',
-                metadata: [
-                    'membership_id' => $membership->id,
-                    'previous_status' =>
-                        TenantUser::STATUS_ACTIVE,
-                    'new_status' =>
-                        TenantUser::STATUS_SUSPENDED,
-                    'scope' => 'tenant_membership',
-                ]
-            );
+            /*
+            |--------------------------------------------------------------------------
+            | Security Event
+            |--------------------------------------------------------------------------
+            */
 
-        return $updatedMembership;
+            $this
+                ->securityEventService
+                ->record(
+                    eventType: 'user.suspended',
+                    category:
+                        SecurityEventService::CATEGORY_USER,
+                    tenantId: $membership->tenant_id,
+                    actorUserId: $authenticatedUserId,
+                    subjectUserId: $membership->user_id,
+                    severity:
+                        SecurityEvent::SEVERITY_WARNING,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    description:
+                        'Tenant user access was suspended.',
+                    metadata: [
+                        'membership_id' =>
+                            $membership->id,
+                        'previous_status' =>
+                            TenantUser::STATUS_ACTIVE,
+                        'new_status' =>
+                            TenantUser::STATUS_SUSPENDED,
+                        'scope' =>
+                            'tenant_membership',
+                    ]
+                );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Audit Event
+            |--------------------------------------------------------------------------
+            */
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $membership->tenant_id,
+                    actor: $authenticatedUser,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'user',
+                    targetId: $membership->user_id,
+                    targetLabel:
+                        $membership->user?->name ??
+                        'Tenant User',
+                    description:
+                        'Tenant user access was suspended.',
+                    changes: [
+                        'membership_status' => [
+                            'from' =>
+                                TenantUser::STATUS_ACTIVE,
+                            'to' =>
+                                TenantUser::STATUS_SUSPENDED,
+                        ],
+                    ],
+                    metadata: [
+                        'membership_id' =>
+                            $membership->id,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
+            return $updatedMembership;
+        });
     }
 
     public function activate(
         TenantUser $membership,
         ?string $authenticatedUserId = null,
         ?string $ipAddress = null,
-        ?string $userAgent = null
+        ?string $userAgent = null,
+        ?User $authenticatedUser = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): TenantUser {
         $user = $membership->user;
 
@@ -286,37 +499,95 @@ class TenantUserService
             );
         }
 
-        $updatedMembership = $this
-            ->tenantUserRepository
-            ->updateMembership(
-                $membership,
-                [
-                    'status' =>
-                        TenantUser::STATUS_ACTIVE,
-                ]
-            );
+        return DB::transaction(function () use (
+            $membership,
+            $authenticatedUserId,
+            $ipAddress,
+            $userAgent,
+            $authenticatedUser,
+            $requestMethod,
+            $requestPath
+        ) {
+            $updatedMembership = $this
+                ->tenantUserRepository
+                ->updateMembership(
+                    $membership,
+                    [
+                        'status' =>
+                            TenantUser::STATUS_ACTIVE,
+                    ]
+                );
 
-        $this
-            ->securityEventService
-            ->record(
-                eventType: 'user.activated',
-                category: SecurityEventService::CATEGORY_USER,
-                tenantId: $membership->tenant_id,
-                actorUserId: $authenticatedUserId,
-                subjectUserId: $membership->user_id,
-                ipAddress: $ipAddress,
-                userAgent: $userAgent,
-                description: 'Tenant user access was activated.',
-                metadata: [
-                    'membership_id' => $membership->id,
-                    'previous_status' =>
-                        TenantUser::STATUS_SUSPENDED,
-                    'new_status' =>
-                        TenantUser::STATUS_ACTIVE,
-                    'scope' => 'tenant_membership',
-                ]
-            );
+            /*
+            |--------------------------------------------------------------------------
+            | Security Event
+            |--------------------------------------------------------------------------
+            */
 
-        return $updatedMembership;
+            $this
+                ->securityEventService
+                ->record(
+                    eventType: 'user.activated',
+                    category:
+                        SecurityEventService::CATEGORY_USER,
+                    tenantId: $membership->tenant_id,
+                    actorUserId: $authenticatedUserId,
+                    subjectUserId: $membership->user_id,
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    description:
+                        'Tenant user access was activated.',
+                    metadata: [
+                        'membership_id' =>
+                            $membership->id,
+                        'previous_status' =>
+                            TenantUser::STATUS_SUSPENDED,
+                        'new_status' =>
+                            TenantUser::STATUS_ACTIVE,
+                        'scope' =>
+                            'tenant_membership',
+                    ]
+                );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Audit Event
+            |--------------------------------------------------------------------------
+            */
+
+            $this
+                ->auditEventService
+                ->record(
+                    tenantId: $membership->tenant_id,
+                    actor: $authenticatedUser,
+                    action: AuditEvent::ACTION_UPDATED,
+                    category: AuditEvent::CATEGORY_ACCESS,
+                    targetType: 'user',
+                    targetId: $membership->user_id,
+                    targetLabel:
+                        $membership->user?->name ??
+                        'Tenant User',
+                    description:
+                        'Tenant user access was activated.',
+                    changes: [
+                        'membership_status' => [
+                            'from' =>
+                                TenantUser::STATUS_SUSPENDED,
+                            'to' =>
+                                TenantUser::STATUS_ACTIVE,
+                        ],
+                    ],
+                    metadata: [
+                        'membership_id' =>
+                            $membership->id,
+                    ],
+                    ipAddress: $ipAddress,
+                    userAgent: $userAgent,
+                    requestMethod: $requestMethod,
+                    requestPath: $requestPath
+                );
+
+            return $updatedMembership;
+        });
     }
 }

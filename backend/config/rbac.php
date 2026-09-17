@@ -75,6 +75,25 @@ return [
 
         'access_reviews.view',
         'access_reviews.manage',
+
+        /*
+        |--------------------------------------------------------------------------
+        | Module 4 - Audit & Activity
+        |--------------------------------------------------------------------------
+        */
+
+        'audit.view',
+        'audit.export',
+
+        /*
+        |--------------------------------------------------------------------------
+        | Module 4 - Archive & Recovery
+        |--------------------------------------------------------------------------
+        */
+
+        'archive.view',
+        'archive.restore',
+        'archive.delete_permanently',
     ],
 
     /*
@@ -99,7 +118,6 @@ return [
         */
 
         'msp_admin' => [
-
             'name' => 'MSP Admin',
 
             'permissions' => '*',
@@ -112,12 +130,16 @@ return [
         */
 
         'editor' => [
-
             'name' => 'Editor',
 
             'permissions' => [
                 'users.view',
                 'organization.view',
+
+                'audit.view',
+
+                'archive.view',
+                'archive.restore',
             ],
         ],
 
@@ -128,11 +150,12 @@ return [
         */
 
         'author' => [
-
             'name' => 'Author',
 
             'permissions' => [
                 'organization.view',
+
+                'archive.view',
             ],
         ],
 
@@ -143,7 +166,6 @@ return [
         */
 
         'read_only_technician' => [
-
             'name' => 'Read-only Technician',
 
             'permissions' => [
@@ -152,6 +174,9 @@ return [
                 'security_groups.view',
                 'organization.view',
                 'security.events.view',
+
+                'audit.view',
+                'archive.view',
             ],
         ],
 
@@ -162,7 +187,6 @@ return [
         */
 
         'portal_member' => [
-
             'name' => 'Portal Member',
 
             'permissions' => [],

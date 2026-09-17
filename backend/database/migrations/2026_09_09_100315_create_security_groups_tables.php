@@ -24,6 +24,14 @@ return new class extends Migration
 
             $table->timestamps();
 
+            /*
+            |--------------------------------------------------------------------------
+            | Soft Delete / Archive
+            |--------------------------------------------------------------------------
+            */
+
+            $table->softDeletes();
+
             $table->foreign('tenant_id')
                 ->references('id')
                 ->on('tenants')

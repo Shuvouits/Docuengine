@@ -90,6 +90,19 @@ class TenantConfigurationRepository
             );
     }
 
+
+    public function findFeatureFlag(
+    Tenant $tenant,
+    string $key
+) {
+    return $tenant
+        ->featureFlags()
+        ->where('key', $key)
+        ->first();
+}
+
+
+
     public function updateFeatureFlag(
         Tenant $tenant,
         string $key,

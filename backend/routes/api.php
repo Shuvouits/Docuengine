@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\Auth\MfaLoginChallengeController;
 use App\Http\Controllers\Api\Auth\PasswordResetController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\Tenant\AccessReviewController;
+use App\Http\Controllers\Api\Tenant\AuditEventController;
 use App\Http\Controllers\Api\Tenant\SecurityEventController;
 use App\Http\Controllers\Api\Tenant\SecurityGroupController;
 use App\Http\Controllers\Api\Tenant\SecurityGroupResourceRestrictionController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\Api\TenantConfigurationController;
 use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\TenantInvitationController;
 use App\Http\Controllers\Api\TenantUserController;
+use App\Http\Controllers\Api\Tenant\ArchiveController;
 use Illuminate\Support\Facades\Route;
 
 // Public Authentication Routes
@@ -215,6 +217,12 @@ Route::middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
 
         Route::delete('/{groupId}/users/{userId}', [SecurityGroupController::class, 'removeUser'])
             ->middleware('permission:security_groups.assign');
+
+        Route::patch('/{groupId}/restore', [SecurityGroupController::class, 'restore'])->middleware('permission:archive.restore');
+
+
+
+        Route::delete('/{groupId}/permanent', [SecurityGroupController::class, 'permanentlyDelete'])->middleware('permission:archive.delete_permanently');
     });
 
 
@@ -240,7 +248,7 @@ Route::middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
     });
 
 
-    // Tenant IP Access Routes
+// Tenant IP Access Routes
 
 Route::middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
     ->prefix('tenants/{tenantId}/ip-access')
@@ -263,7 +271,7 @@ Route::middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
 
 
 
-    Route::prefix('tenants/{tenantId}/security-events')
+Route::prefix('tenants/{tenantId}/security-events')
     ->middleware([
         'auth:api',
         'auth.session',
@@ -278,7 +286,7 @@ Route::middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
 
 
 
-    Route::prefix('tenants/{tenantId}')
+Route::prefix('tenants/{tenantId}')
     ->middleware([
         'auth:api',
         'auth.session',
@@ -305,4 +313,54 @@ Route::middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
 
         Route::post('/access-reviews/{reviewId}/cancel', [AccessReviewController::class, 'cancel'])
             ->middleware('permission:access_reviews.manage');
+    });
+
+
+
+
+/*
+|--------------------------------------------------------------------------
+| Module 4 - Audit & Activity Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('tenants/{tenantId}/audit-events')
+    ->middleware([
+        'auth:api',
+        'auth.session',
+        'tenant.resolve:tenantId',
+        'permission:audit.view',
+    ])
+    ->group(function () {
+        Route::get('/', [AuditEventController::class, 'index']);
+
+        Route::get('/export', [AuditEventController::class, 'export'])
+            ->middleware('permission:audit.export');
+
+        Route::get(
+            '/activity/{targetType}/{targetId}',
+            [AuditEventController::class, 'activity']
+        );
+
+        Route::get(
+            '/{eventId}',
+            [AuditEventController::class, 'show']
+        )->whereUuid('eventId');
+    });
+
+
+
+
+/*---Module 4 - Archive / Museum Routes--*/
+
+Route::prefix('tenants/{tenantId}/archive')
+    ->middleware([
+        'auth:api',
+        'auth.session',
+        'tenant.resolve:tenantId',
+        'permission:archive.view',
+    ])
+    ->group(function () {
+        Route::get('/', [ArchiveController::class, 'index']);
+        Route::get('/{archiveEntryId}', [ArchiveController::class, 'show']);
     });

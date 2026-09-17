@@ -38,6 +38,36 @@ class SecurityGroupRepository
             ->first();
     }
 
+    public function findArchivedByTenantAndId(
+        string $tenantId,
+        string $groupId
+    ): ?SecurityGroup {
+        return SecurityGroup::onlyTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $groupId)
+            ->with([
+                'creator:id,name,email',
+                'users:id,name,email,status',
+            ])
+            ->withCount('users')
+            ->first();
+    }
+
+    public function findWithArchivedByTenantAndId(
+        string $tenantId,
+        string $groupId
+    ): ?SecurityGroup {
+        return SecurityGroup::withTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $groupId)
+            ->with([
+                'creator:id,name,email',
+                'users:id,name,email,status',
+            ])
+            ->withCount('users')
+            ->first();
+    }
+
     public function findByTenantAndName(
         string $tenantId,
         string $name
@@ -69,10 +99,40 @@ class SecurityGroupRepository
         ]);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Archive / Soft Delete
+    |--------------------------------------------------------------------------
+    */
+
     public function delete(
         SecurityGroup $group
     ): bool {
         return (bool) $group->delete();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Restore Archived Group
+    |--------------------------------------------------------------------------
+    */
+
+    public function restore(
+        SecurityGroup $group
+    ): bool {
+        return (bool) $group->restore();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Permanent Delete
+    |--------------------------------------------------------------------------
+    */
+
+    public function forceDelete(
+        SecurityGroup $group
+    ): bool {
+        return (bool) $group->forceDelete();
     }
 
     public function findActiveTenantMembership(
