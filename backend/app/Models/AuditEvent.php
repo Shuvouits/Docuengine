@@ -28,6 +28,10 @@ class AuditEvent extends Model
     public const ACTION_DELETED = 'deleted';
     public const ACTION_PERMANENTLY_DELETED = 'permanently_deleted';
 
+    public const ACTION_ACTIVATED = 'activated';
+    public const ACTION_DEACTIVATED = 'deactivated';
+    public const ACTION_REACTIVATED = 'reactivated';
+
     /*
     |--------------------------------------------------------------------------
     | Categories

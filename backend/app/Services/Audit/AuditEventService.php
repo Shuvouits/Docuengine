@@ -34,63 +34,45 @@ class AuditEventService
     ): AuditEvent {
         $this->validateAction($action);
 
-        return $this
-            ->auditEventRepository
-            ->create([
-                'tenant_id' =>
-                    $tenantId,
+        return $this->auditEventRepository->create([
+            'tenant_id' => $tenantId,
 
-                'actor_user_id' =>
-                    $actor?->id,
+            'actor_user_id' => $actor?->id,
 
-                'actor_snapshot' =>
-                    $actor
-                        ? [
-                            'id' => $actor->id,
-                            'name' => $actor->name,
-                            'email' => $actor->email,
-                        ]
-                        : null,
+            'actor_snapshot' => $actor
+                ? [
+                    'id' => $actor->id,
+                    'name' => $actor->name,
+                    'email' => $actor->email,
+                ]
+                : null,
 
-                'action' =>
-                    $action,
+            'action' => $action,
 
-                'category' =>
-                    $category,
+            'category' => $category,
 
-                'target_type' =>
-                    $targetType,
+            'target_type' => $targetType,
 
-                'target_id' =>
-                    $targetId,
+            'target_id' => $targetId,
 
-                'target_label' =>
-                    $targetLabel,
+            'target_label' => $targetLabel,
 
-                'description' =>
-                    $description,
+            'description' => $description,
 
-                'changes' =>
-                    $changes,
+            'changes' => $changes,
 
-                'metadata' =>
-                    $metadata,
+            'metadata' => $metadata,
 
-                'ip_address' =>
-                    $ipAddress,
+            'ip_address' => $ipAddress,
 
-                'user_agent' =>
-                    $userAgent,
+            'user_agent' => $userAgent,
 
-                'request_method' =>
-                    $requestMethod,
+            'request_method' => $requestMethod,
 
-                'request_path' =>
-                    $requestPath,
+            'request_path' => $requestPath,
 
-                'occurred_at' =>
-                    now(),
-            ]);
+            'occurred_at' => now(),
+        ]);
     }
 
     public function listTenantEvents(
@@ -103,25 +85,21 @@ class AuditEventService
             min($perPage, 100)
         );
 
-        return $this
-            ->auditEventRepository
-            ->paginateByTenant(
-                $tenantId,
-                $filters,
-                $perPage
-            );
+        return $this->auditEventRepository->paginateByTenant(
+            $tenantId,
+            $filters,
+            $perPage
+        );
     }
 
     public function getTenantEvent(
         string $tenantId,
         string $eventId
     ): AuditEvent {
-        $event = $this
-            ->auditEventRepository
-            ->findByTenantAndId(
-                $tenantId,
-                $eventId
-            );
+        $event = $this->auditEventRepository->findByTenantAndId(
+            $tenantId,
+            $eventId
+        );
 
         if (!$event) {
             throw new DomainException(
@@ -143,14 +121,12 @@ class AuditEventService
             min($perPage, 100)
         );
 
-        return $this
-            ->auditEventRepository
-            ->paginateForTarget(
-                $tenantId,
-                $targetType,
-                $targetId,
-                $perPage
-            );
+        return $this->auditEventRepository->paginateForTarget(
+            $tenantId,
+            $targetType,
+            $targetId,
+            $perPage
+        );
     }
 
     /*
@@ -187,12 +163,10 @@ class AuditEventService
             ) {
                 $exportedCount = 0;
 
-                $events = $this
-                    ->auditEventRepository
-                    ->cursorForExport(
-                        $tenantId,
-                        $cleanFilters
-                    );
+                $events = $this->auditEventRepository->cursorForExport(
+                    $tenantId,
+                    $cleanFilters
+                );
 
                 foreach ($events as $event) {
                     $exportedCount++;
@@ -221,14 +195,9 @@ class AuditEventService
                     description: 'Audit records were exported.',
                     changes: null,
                     metadata: [
-                        'filters' =>
-                            $cleanFilters,
-
-                        'record_count' =>
-                            $exportedCount,
-
-                        'format' =>
-                            'csv',
+                        'filters' => $cleanFilters,
+                        'record_count' => $exportedCount,
+                        'format' => 'csv',
                     ],
                     ipAddress: $ipAddress,
                     userAgent: $userAgent,
@@ -253,6 +222,9 @@ class AuditEventService
             AuditEvent::ACTION_RESTORED,
             AuditEvent::ACTION_DELETED,
             AuditEvent::ACTION_PERMANENTLY_DELETED,
+            AuditEvent::ACTION_ACTIVATED,
+            AuditEvent::ACTION_DEACTIVATED,
+            AuditEvent::ACTION_REACTIVATED,
         ];
 
         if (!in_array(

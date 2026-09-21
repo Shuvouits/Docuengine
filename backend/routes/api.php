@@ -18,6 +18,15 @@ use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\TenantInvitationController;
 use App\Http\Controllers\Api\TenantUserController;
 use App\Http\Controllers\Api\Tenant\ArchiveController;
+use App\Http\Controllers\Api\Tenant\AssetLayoutActivationController;
+use App\Http\Controllers\Api\Tenant\AssetLayoutBuilderController;
+use App\Http\Controllers\Api\Tenant\AssetLayoutController;
+use App\Http\Controllers\Api\Tenant\AssetLayoutFieldController;
+use App\Http\Controllers\Api\Tenant\OptionListController;
+use App\Http\Controllers\Api\Tenant\OptionListItemController;
+use App\Http\Controllers\Api\Tenant\AssetLayoutSectionController;
+use App\Http\Controllers\Api\Tenant\AssetLayoutValidationController;
+use App\Http\Controllers\Api\Tenant\AssetLayoutVersionController;
 use Illuminate\Support\Facades\Route;
 
 // Public Authentication Routes
@@ -286,13 +295,8 @@ Route::prefix('tenants/{tenantId}/security-events')
 
 
 
-Route::prefix('tenants/{tenantId}')
-    ->middleware([
-        'auth:api',
-        'auth.session',
-        'tenant.resolve:tenantId',
-    ])
-    ->group(function () {
+Route::prefix('tenants/{tenantId}')->middleware(['auth:api','auth.session','tenant.resolve:tenantId',])->group(function () 
+   {
         Route::get('/access-reviews', [AccessReviewController::class, 'index'])
             ->middleware('permission:access_reviews.view');
 
@@ -313,6 +317,85 @@ Route::prefix('tenants/{tenantId}')
 
         Route::post('/access-reviews/{reviewId}/cancel', [AccessReviewController::class, 'cancel'])
             ->middleware('permission:access_reviews.manage');
+
+        /*Module 5 - Asset Layout Option Lists*/
+
+        Route::get('/option-lists', [OptionListController::class, 'index'])->middleware('permission:option_lists.view');
+        Route::post('/option-lists', [OptionListController::class, 'store'])->middleware('permission:option_lists.manage');
+        Route::get('/option-lists/{optionListId}', [OptionListController::class, 'show'])->middleware('permission:option_lists.view');
+        Route::patch('/option-lists/{optionListId}', [OptionListController::class, 'update'])->middleware('permission:option_lists.manage');
+        Route::delete('/option-lists/{optionListId}', [OptionListController::class, 'destroy'])->middleware('permission:option_lists.manage');
+        Route::post('/option-lists/{optionListId}/restore', [OptionListController::class, 'restore'])->middleware('permission:option_lists.manage');
+
+        /*Module 5 - Asset Layout Option List Item */
+
+        Route::get('/option-lists/{optionListId}/items', [OptionListItemController::class, 'index'])->middleware('permission:option_lists.view');
+        Route::post('/option-lists/{optionListId}/items', [OptionListItemController::class, 'store'])->middleware('permission:option_lists.manage');
+        Route::get('/option-lists/{optionListId}/items/{itemId}', [OptionListItemController::class, 'show'])->middleware('permission:option_lists.view');
+        Route::patch('/option-lists/{optionListId}/items/{itemId}', [OptionListItemController::class, 'update'])->middleware('permission:option_lists.manage');
+        Route::delete('/option-lists/{optionListId}/items/{itemId}', [OptionListItemController::class, 'destroy'])->middleware('permission:option_lists.manage');
+        Route::post('/option-lists/{optionListId}/items/{itemId}/restore', [OptionListItemController::class, 'restore'])->middleware('permission:option_lists.manage');
+
+        /*Module 5 - Asset Layouts*/
+
+        Route::get('/asset-layouts', [AssetLayoutController::class, 'index'])->middleware('permission:asset_layouts.view');
+
+        Route::post('/asset-layouts', [AssetLayoutController::class, 'store'])->middleware('permission:asset_layouts.manage');
+
+        Route::get('/asset-layouts/{layoutId}', [AssetLayoutController::class, 'show'])->middleware('permission:asset_layouts.view');
+
+        Route::patch('/asset-layouts/{layoutId}', [AssetLayoutController::class, 'update'])->middleware('permission:asset_layouts.manage');
+
+        Route::delete('/asset-layouts/{layoutId}', [AssetLayoutController::class, 'destroy'])->middleware('permission:asset_layouts.manage');
+
+        Route::post('/asset-layouts/{layoutId}/restore', [AssetLayoutController::class, 'restore'])->middleware('permission:asset_layouts.manage');
+
+
+        /*Module 5 - Asset Layout Section*/
+
+        Route::get('/asset-layouts/{layoutId}/sections', [AssetLayoutSectionController::class, 'index'])->middleware('permission:asset_layouts.view');
+
+        Route::post('/asset-layouts/{layoutId}/sections', [AssetLayoutSectionController::class, 'store'])->middleware('permission:asset_layouts.manage');
+
+        Route::get('/asset-layouts/{layoutId}/sections/{sectionId}', [AssetLayoutSectionController::class, 'show'])->middleware('permission:asset_layouts.view');
+
+        Route::patch('/asset-layouts/{layoutId}/sections/{sectionId}', [AssetLayoutSectionController::class, 'update'])->middleware('permission:asset_layouts.manage');
+
+        Route::delete('/asset-layouts/{layoutId}/sections/{sectionId}', [AssetLayoutSectionController::class, 'destroy'])->middleware('permission:asset_layouts.manage');
+
+        Route::post('/asset-layouts/{layoutId}/sections/{sectionId}/restore', [AssetLayoutSectionController::class, 'restore'])->middleware('permission:asset_layouts.manage');
+
+        /*   Module 5 - Asset Layout Fields   */
+
+        Route::get('/asset-layouts/{layoutId}/sections/{sectionId}/fields', [AssetLayoutFieldController::class, 'index'])->middleware('permission:asset_layouts.view');
+
+        Route::post('/asset-layouts/{layoutId}/sections/{sectionId}/fields', [AssetLayoutFieldController::class, 'store'])->middleware('permission:asset_layouts.manage');
+
+        Route::get('/asset-layouts/{layoutId}/sections/{sectionId}/fields/{fieldId}', [AssetLayoutFieldController::class, 'show'])->middleware('permission:asset_layouts.view');
+
+        Route::patch('/asset-layouts/{layoutId}/sections/{sectionId}/fields/{fieldId}', [AssetLayoutFieldController::class, 'update'])->middleware('permission:asset_layouts.manage');
+
+        Route::delete('/asset-layouts/{layoutId}/sections/{sectionId}/fields/{fieldId}', [AssetLayoutFieldController::class, 'destroy'])->middleware('permission:asset_layouts.manage');
+
+        Route::post('/asset-layouts/{layoutId}/sections/{sectionId}/fields/{fieldId}/restore', [AssetLayoutFieldController::class, 'restore'])->middleware('permission:asset_layouts.manage');
+
+        Route::get('/asset-layouts/{layoutId}/validate', [AssetLayoutValidationController::class, 'validateLayout'])->middleware('permission:asset_layouts.view');
+
+        Route::get('/asset-layouts/{layoutId}/builder', [AssetLayoutBuilderController::class, 'show'])->middleware('permission:asset_layouts.view');
+
+        Route::post('/asset-layouts/{layoutId}/versions', [AssetLayoutVersionController::class, 'store'])->middleware('permission:asset_layouts.manage');
+
+        Route::get('/asset-layouts/{layoutId}/versions', [AssetLayoutVersionController::class, 'index'])->middleware('permission:asset_layouts.view');
+
+        Route::get('/asset-layouts/{layoutId}/versions/{versionId}', [AssetLayoutVersionController::class, 'show'])->middleware('permission:asset_layouts.view');
+
+        Route::get('/companies/{companyId}/asset-layout-activations', [AssetLayoutActivationController::class, 'companyIndex'])->middleware('permission:asset_layouts.view');
+
+        Route::post('/asset-layouts/{layoutId}/activate', [AssetLayoutActivationController::class, 'activate'])->middleware('permission:asset_layouts.activate');
+
+        Route::post('/asset-layouts/{layoutId}/deactivate', [AssetLayoutActivationController::class, 'deactivate'])->middleware('permission:asset_layouts.activate');
+
+
     });
 
 

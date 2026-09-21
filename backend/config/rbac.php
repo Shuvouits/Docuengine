@@ -94,6 +94,32 @@ return [
         'archive.view',
         'archive.restore',
         'archive.delete_permanently',
+
+
+        /*
+|--------------------------------------------------------------------------
+| Module 5 - Asset Layouts
+|--------------------------------------------------------------------------
+*/
+
+        'asset_layouts.view',
+
+        'asset_layouts.manage',
+
+        'asset_layouts.activate',
+
+        /*
+|--------------------------------------------------------------------------
+| Module 5 - Standardized Option Lists
+|--------------------------------------------------------------------------
+*/
+
+        'option_lists.view',
+
+        'option_lists.manage',
+
+
+
     ],
 
     /*

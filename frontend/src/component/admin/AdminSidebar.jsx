@@ -21,6 +21,8 @@ import {
     Lock,
     ScrollText,
     Archive,
+    LayoutTemplate,
+    ListChecks,
 } from "lucide-react";
 
 function AdminSidebar({
@@ -32,12 +34,9 @@ function AdminSidebar({
     const navigate = useNavigate();
 
     const user = authData?.user || null;
+    const currentTenant = authData?.current_tenant || null;
 
-    const currentTenant =
-        authData?.current_tenant || null;
-
-    const isPlatformOwner =
-        Boolean(user?.is_platform_owner);
+    const isPlatformOwner = Boolean(user?.is_platform_owner);
 
     /*
     |--------------------------------------------------------------------------
@@ -72,18 +71,17 @@ function AdminSidebar({
 
     const isFeatureEnabled = (key) => {
         if (Array.isArray(featureFlags)) {
-            const feature =
-                featureFlags.find((item) => {
-                    if (typeof item === "string") {
-                        return item === key;
-                    }
+            const feature = featureFlags.find((item) => {
+                if (typeof item === "string") {
+                    return item === key;
+                }
 
-                    return (
-                        item?.key === key ||
-                        item?.name === key ||
-                        item?.slug === key
-                    );
-                });
+                return (
+                    item?.key === key ||
+                    item?.name === key ||
+                    item?.slug === key
+                );
+            });
 
             if (!feature) {
                 return false;
@@ -104,8 +102,7 @@ function AdminSidebar({
             featureFlags &&
             typeof featureFlags === "object"
         ) {
-            const feature =
-                featureFlags[key];
+            const feature = featureFlags[key];
 
             if (typeof feature === "boolean") {
                 return feature;
@@ -183,12 +180,11 @@ function AdminSidebar({
     const isLightSidebar =
         sidebarStyle === "light";
 
-    const isBrandSidebar =
-        [
-            "brand",
-            "branded",
-            "primary",
-        ].includes(sidebarStyle);
+    const isBrandSidebar = [
+        "brand",
+        "branded",
+        "primary",
+    ].includes(sidebarStyle);
 
     const sidebarBackground =
         isLightSidebar
@@ -291,6 +287,36 @@ function AdminSidebar({
                             label: "Feature Flags",
                             path: "/admin/organization/feature-flags",
                             icon: Flag,
+                        },
+                    ]
+                  : []),
+          ]
+        : [];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Documentation
+    |--------------------------------------------------------------------------
+    */
+
+    const documentationItems = currentTenant
+        ? [
+              ...(can("asset_layouts.view")
+                  ? [
+                        {
+                            label: "Asset Layouts",
+                            path: "/admin/asset-layouts",
+                            icon: LayoutTemplate,
+                        },
+                    ]
+                  : []),
+
+              ...(can("option_lists.view")
+                  ? [
+                        {
+                            label: "Option Lists",
+                            path: "/admin/option-lists",
+                            icon: ListChecks,
                         },
                     ]
                   : []),
@@ -598,7 +624,13 @@ function AdminSidebar({
             <div className="mb-6">
                 <div className="px-4 pb-2">
                     <p
-                        className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${mutedTextClass}`}
+                        className={`
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-[0.18em]
+                            ${mutedTextClass}
+                        `}
                     >
                         {title}
                     </p>
@@ -663,7 +695,14 @@ function AdminSidebar({
                         className="group flex items-center gap-3"
                     >
                         <div
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-lg transition-transform duration-300 group-hover:scale-105"
+                            className="
+                                flex h-10 w-10 shrink-0
+                                items-center justify-center
+                                rounded-xl text-white
+                                shadow-lg
+                                transition-transform duration-300
+                                group-hover:scale-105
+                            "
                             style={{
                                 background:
                                     "linear-gradient(135deg, var(--brand-primary), #7c3aed)",
@@ -678,7 +717,12 @@ function AdminSidebar({
 
                         <div>
                             <h1
-                                className={`text-[21px] font-bold tracking-tight ${primaryTextClass}`}
+                                className={`
+                                    text-[21px]
+                                    font-bold
+                                    tracking-tight
+                                    ${primaryTextClass}
+                                `}
                             >
                                 Docu
                                 <span
@@ -694,7 +738,11 @@ function AdminSidebar({
                             </h1>
 
                             <p
-                                className={`text-[10px] tracking-wide ${secondaryTextClass}`}
+                                className={`
+                                    text-[10px]
+                                    tracking-wide
+                                    ${secondaryTextClass}
+                                `}
                             >
                                 IT Documentation Platform
                             </p>
@@ -729,6 +777,11 @@ function AdminSidebar({
                     {renderSection(
                         "Organization",
                         organizationItems
+                    )}
+
+                    {renderSection(
+                        "Documentation",
+                        documentationItems
                     )}
 
                     {renderSection(
@@ -841,9 +894,7 @@ function AdminSidebar({
                                     ) : (
                                         <Building2
                                             size={20}
-                                            strokeWidth={
-                                                1.8
-                                            }
+                                            strokeWidth={1.8}
                                             style={{
                                                 color:
                                                     "var(--brand-primary)",
@@ -854,11 +905,14 @@ function AdminSidebar({
 
                                 <div className="min-w-0 flex-1">
                                     <p
-                                        className={`truncate text-xs font-semibold ${primaryTextClass}`}
+                                        className={`
+                                            truncate
+                                            text-xs
+                                            font-semibold
+                                            ${primaryTextClass}
+                                        `}
                                     >
-                                        {
-                                            organizationName
-                                        }
+                                        {organizationName}
                                     </p>
 
                                     <div className="mt-1 flex items-center gap-1.5">
@@ -875,7 +929,11 @@ function AdminSidebar({
                                         />
 
                                         <span
-                                            className={`capitalize text-[10px] ${secondaryTextClass}`}
+                                            className={`
+                                                capitalize
+                                                text-[10px]
+                                                ${secondaryTextClass}
+                                            `}
                                         >
                                             {tenantStatus ||
                                                 "Unknown"}
@@ -897,7 +955,10 @@ function AdminSidebar({
                                 {tenantTimezone && (
                                     <div className="flex items-center justify-between">
                                         <span
-                                            className={`text-[10px] ${mutedTextClass}`}
+                                            className={`
+                                                text-[10px]
+                                                ${mutedTextClass}
+                                            `}
                                         >
                                             Timezone
                                         </span>
@@ -905,34 +966,7 @@ function AdminSidebar({
                                         <span
                                             className={`
                                                 max-w-[130px]
-                                                truncate text-[10px]
-                                                font-medium
-                                                ${
-                                                    isLightSidebar
-                                                        ? "text-slate-700"
-                                                        : "text-slate-300"
-                                                }
-                                            `}
-                                        >
-                                            {
-                                                tenantTimezone
-                                            }
-                                        </span>
-                                    </div>
-                                )}
-
-                                {tenantRole && (
-                                    <div className="mt-2 flex items-center justify-between">
-                                        <span
-                                            className={`text-[10px] ${mutedTextClass}`}
-                                        >
-                                            Access
-                                        </span>
-
-                                        <span
-                                            className={`
-                                                max-w-[140px]
-                                                truncate text-right
+                                                truncate
                                                 text-[10px]
                                                 font-medium
                                                 ${
@@ -941,13 +975,39 @@ function AdminSidebar({
                                                         : "text-slate-300"
                                                 }
                                             `}
-                                            title={
-                                                tenantRole
-                                            }
                                         >
-                                            {
-                                                tenantRole
-                                            }
+                                            {tenantTimezone}
+                                        </span>
+                                    </div>
+                                )}
+
+                                {tenantRole && (
+                                    <div className="mt-2 flex items-center justify-between">
+                                        <span
+                                            className={`
+                                                text-[10px]
+                                                ${mutedTextClass}
+                                            `}
+                                        >
+                                            Access
+                                        </span>
+
+                                        <span
+                                            className={`
+                                                max-w-[140px]
+                                                truncate
+                                                text-right
+                                                text-[10px]
+                                                font-medium
+                                                ${
+                                                    isLightSidebar
+                                                        ? "text-slate-700"
+                                                        : "text-slate-300"
+                                                }
+                                            `}
+                                            title={tenantRole}
+                                        >
+                                            {tenantRole}
                                         </span>
                                     </div>
                                 )}
@@ -966,7 +1026,11 @@ function AdminSidebar({
                         >
                             <div className="flex items-center gap-3">
                                 <div
-                                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                                    className="
+                                        flex h-10 w-10 shrink-0
+                                        items-center justify-center
+                                        rounded-xl
+                                    "
                                     style={{
                                         backgroundColor:
                                             "color-mix(in srgb, var(--brand-primary) 10%, transparent)",
@@ -983,13 +1047,21 @@ function AdminSidebar({
 
                                 <div>
                                     <p
-                                        className={`text-xs font-semibold ${primaryTextClass}`}
+                                        className={`
+                                            text-xs
+                                            font-semibold
+                                            ${primaryTextClass}
+                                        `}
                                     >
                                         Platform Administration
                                     </p>
 
                                     <p
-                                        className={`mt-1 text-[10px] ${secondaryTextClass}`}
+                                        className={`
+                                            mt-1
+                                            text-[10px]
+                                            ${secondaryTextClass}
+                                        `}
                                     >
                                         No MSP selected
                                     </p>
@@ -1004,14 +1076,17 @@ function AdminSidebar({
                 {!authLoading && user && (
                     <div
                         className={`
-                            border-t px-4 pt-4
+                            border-t
+                            px-4 pt-4
                             ${sidebarBorderClass}
                         `}
                     >
                         <div className="px-4 pb-3">
                             <p
                                 className={`
-                                    truncate text-xs font-semibold
+                                    truncate
+                                    text-xs
+                                    font-semibold
                                     ${
                                         isLightSidebar
                                             ? "text-slate-700"
@@ -1024,7 +1099,8 @@ function AdminSidebar({
 
                             <p
                                 className={`
-                                    mt-0.5 truncate text-[10px]
+                                    mt-0.5 truncate
+                                    text-[10px]
                                     ${mutedTextClass}
                                 `}
                             >
@@ -1041,8 +1117,9 @@ function AdminSidebar({
                         type="button"
                         onClick={handleLogout}
                         className={`
-                            group flex w-full items-center
-                            gap-3 rounded-xl px-4 py-3
+                            group flex w-full
+                            items-center gap-3
+                            rounded-xl px-4 py-3
                             text-sm font-medium
                             transition-all duration-200
                             hover:bg-red-500/10
@@ -1057,7 +1134,11 @@ function AdminSidebar({
                         <LogOut
                             size={18}
                             strokeWidth={1.8}
-                            className="transition-transform duration-200 group-hover:-translate-x-0.5"
+                            className="
+                                transition-transform
+                                duration-200
+                                group-hover:-translate-x-0.5
+                            "
                         />
 
                         <span>

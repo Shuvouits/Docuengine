@@ -41,6 +41,7 @@ import IpAccessPage from "./pages/backend/ip-access/IpAccessPage";
 import TenantDetailsPage from "./pages/backend/tenants/TenantDetailsPage";
 import AuditLogsPage from "./pages/backend/audit-logs/AuditLogsPage";
 import MuseumPage from "./pages/backend/museum/MuseumPage";
+import AssetLayoutsPage from "./pages/backend/asset-layouts/AssetLayoutsPage";
 
 function App() {
     return (
@@ -157,6 +158,18 @@ function App() {
 
                     <Route element={<PermissionRoute permission="archive.view" />}>
                         <Route path="/admin/museum" element={<AdminLayout><MuseumPage /></AdminLayout>} />
+                    </Route>
+
+                    {/* ASSET LAYOUTS */}
+
+                    <Route element={<PermissionRoute permission="asset_layouts.view" />}>
+                        <Route path="/admin/asset-layouts" element={<AdminLayout><AssetLayoutsPage /></AdminLayout>} />
+                    </Route>
+
+                    {/* ASSET LAYOUTS - MANAGE */}
+
+                    <Route element={<PermissionRoute permission="asset_layouts.manage" />}>
+                        <Route path="/admin/asset-layouts/create" element={<AdminLayout><CreateAssetLayoutPage /></AdminLayout>} />
                     </Route>
 
                 </Route>
