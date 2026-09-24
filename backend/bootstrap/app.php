@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnforceTenantIpAllowlist;
 use App\Http\Middleware\EnsureActiveAuthSession;
+use App\Http\Middleware\EnsureTenantFeatureEnabled;
 use App\Http\Middleware\PlatformOwnerMiddleware;
 use App\Http\Middleware\ResolveTenantMiddleware;
 use App\Http\Middleware\TenantAdminMiddleware;
@@ -31,6 +32,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'platform.owner' => PlatformOwnerMiddleware::class,
             'tenant.admin' => TenantAdminMiddleware::class,
             'tenant.resolve' => ResolveTenantMiddleware::class,
+
+            'tenant.feature' => EnsureTenantFeatureEnabled::class,
 
             /*
             |--------------------------------------------------------------------------

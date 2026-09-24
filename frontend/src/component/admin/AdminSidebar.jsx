@@ -293,15 +293,19 @@ function AdminSidebar({
           ]
         : [];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Documentation
-    |--------------------------------------------------------------------------
-    */
+   
 
-    const documentationItems = currentTenant
-        ? [
-              ...(can("asset_layouts.view")
+          /*
+|--------------------------------------------------------------------------
+| Documentation
+|--------------------------------------------------------------------------
+*/
+
+const documentationItems = currentTenant
+    ? [
+          ...(
+              isFeatureEnabled("asset_layouts") &&
+              can("asset_layouts.view")
                   ? [
                         {
                             label: "Asset Layouts",
@@ -309,9 +313,12 @@ function AdminSidebar({
                             icon: LayoutTemplate,
                         },
                     ]
-                  : []),
+                  : []
+          ),
 
-              ...(can("option_lists.view")
+          ...(
+              isFeatureEnabled("asset_layouts") &&
+              can("option_lists.view")
                   ? [
                         {
                             label: "Option Lists",
@@ -319,9 +326,23 @@ function AdminSidebar({
                             icon: ListChecks,
                         },
                     ]
-                  : []),
-          ]
-        : [];
+                  : []
+          ),
+
+          ...(
+              isFeatureEnabled("asset_layouts") &&
+              can("asset_layouts.activate")
+                  ? [
+                        {
+                            label: "Company Layouts",
+                            path: "/admin/company-layouts",
+                            icon: Building2,
+                        },
+                    ]
+                  : []
+          ),
+      ]
+    : [];
 
     /*
     |--------------------------------------------------------------------------

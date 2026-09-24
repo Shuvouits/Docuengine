@@ -154,48 +154,45 @@ const RolesTable = ({
                                     )}
                                 </td>
 
-                                <td className="px-5 py-4">
-                                    <div className="flex justify-end gap-2">
-                                        {canUpdate && (
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    onEdit(
-                                                        role
-                                                    )
-                                                }
-                                                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-[#19b5fe]/40 hover:text-[#159edb]"
-                                            >
-                                                <Edit3
-                                                    size={
-                                                        14
-                                                    }
-                                                />
-                                                Edit
-                                            </button>
-                                        )}
+                               
 
-                                        {canDelete &&
-                                            !role.is_system && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        onDelete(
-                                                            role
-                                                        )
-                                                    }
-                                                    className="flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                                                >
-                                                    <Trash2
-                                                        size={
-                                                            14
-                                                        }
-                                                    />
-                                                    Delete
-                                                </button>
-                                            )}
-                                    </div>
-                                </td>
+                               <td className="px-5 py-4">
+    <div className="flex justify-end gap-2">
+        {canUpdate && !role.is_system && (
+            <button
+                type="button"
+                onClick={() =>
+                    onEdit(role)
+                }
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-[#19b5fe]/40 hover:text-[#159edb]"
+            >
+                <Edit3 size={14} />
+                Edit
+            </button>
+        )}
+
+        {canDelete && !role.is_system && (
+            <button
+                type="button"
+                onClick={() =>
+                    onDelete(role)
+                }
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+            >
+                <Trash2 size={14} />
+                Delete
+            </button>
+        )}
+
+        {role.is_system && (
+            <span className="text-xs font-medium text-slate-400">
+                Protected
+            </span>
+        )}
+    </div>
+</td>
+
+
                             </tr>
                         ))}
                     </tbody>

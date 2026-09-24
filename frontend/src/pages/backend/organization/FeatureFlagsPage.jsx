@@ -21,6 +21,7 @@ import FeatureFlagCard from "../../../component/admin/organization/feature-flags
 function FeatureFlagsPage({
     authData = null,
     authLoading = false,
+    refreshAuth = () => {},
 }) {
     const currentTenant =
         authData?.current_tenant || null;
@@ -347,6 +348,8 @@ function FeatureFlagsPage({
 
             await loadFeatureFlags();
 
+            await refreshAuth();
+
             setSuccess(
                 `${preparedFlags.length} feature ${preparedFlags.length ===
                     1
@@ -392,6 +395,8 @@ function FeatureFlagsPage({
             */
 
             await loadFeatureFlags();
+
+            await refreshAuth();
         } finally {
             setSaving(false);
         }

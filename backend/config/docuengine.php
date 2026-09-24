@@ -61,14 +61,15 @@ return [
     | sessions and security groups should not be feature flags.
     |
     */
-
     'feature_flags' => [
+
         'client_portal' => false,
         'ai_assistant' => false,
-
         'access_reviews' => false,
         'ip_access' => false,
         'security_events' => false,
+        'asset_layouts' => false,
+
     ],
 
     /*
@@ -133,5 +134,8 @@ return [
         'monday' => 'Monday',
         'sunday' => 'Sunday',
     ],
+
+
+
 
 ];

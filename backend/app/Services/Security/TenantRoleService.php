@@ -352,12 +352,6 @@ class TenantRoleService
             );
         }
 
-        if ($this->isSystemRole($role)) {
-            throw new DomainException(
-                'System roles cannot be deleted.'
-            );
-        }
-
         if (
             $this
                 ->tenantRoleRepository
@@ -365,16 +359,6 @@ class TenantRoleService
         ) {
             throw new DomainException(
                 'This role cannot be deleted because it is assigned to one or more users.'
-            );
-        }
-
-        if (
-            $this
-                ->tenantRoleRepository
-                ->roleHasInvitations($role)
-        ) {
-            throw new DomainException(
-                'This role cannot be deleted because it is referenced by an invitation.'
             );
         }
 
@@ -475,29 +459,13 @@ class TenantRoleService
         return $permissions;
     }
 
-    private function isSystemRole(
-        Role $role
-    ): bool {
-        return in_array(
-            $role->name,
-            $this->systemRoleNames(),
-            true
-        );
-    }
 
-    private function systemRoleNames(): array
-    {
-        return config(
-            'rbac.protected_roles',
-            [
-                'MSP Admin',
-                'Editor',
-                'Author',
-                'Read-only Technician',
-                'Portal Member',
-            ]
-        );
-    }
+
+   private function isSystemRole(
+    Role $role
+): bool {
+    return $role->name === 'MSP Admin';
+}
 
     private function setTenantContext(
         string $tenantId

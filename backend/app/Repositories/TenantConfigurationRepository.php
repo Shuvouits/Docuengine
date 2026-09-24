@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Models\Tenant;
+use App\Models\TenantFeatureFlag;
 
 class TenantConfigurationRepository
 {
@@ -101,6 +102,31 @@ class TenantConfigurationRepository
         ->first();
 }
 
+
+public function isFeatureEnabled(
+    string $tenantId,
+    string $key
+): bool {
+    $registeredFlags = config(
+        'docuengine.feature_flags',
+        []
+    );
+
+    if (!array_key_exists($key, $registeredFlags)) {
+        return false;
+    }
+
+    $featureFlag = TenantFeatureFlag::query()
+        ->where('tenant_id', $tenantId)
+        ->where('key', $key)
+        ->first();
+
+    if ($featureFlag) {
+        return (bool) $featureFlag->enabled;
+    }
+
+    return (bool) $registeredFlags[$key];
+}
 
 
     public function updateFeatureFlag(

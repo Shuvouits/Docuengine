@@ -233,8 +233,7 @@ class TenantRoleController extends Controller
 
             'guard_name' => $role->guard_name,
 
-            'is_system' => $this
-                ->isSystemRole($role),
+            'is_system' => $role->name === 'MSP Admin',
 
             'permissions' => $role
                 ->permissions
@@ -257,22 +256,10 @@ class TenantRoleController extends Controller
         ];
     }
 
-    private function isSystemRole(
-        Role $role
-    ): bool {
-        return in_array(
-            $role->name,
-            config(
-                'rbac.protected_roles',
-                [
-                    'MSP Admin',
-                    'Editor',
-                    'Author',
-                    'Read-only Technician',
-                    'Portal Member',
-                ]
-            ),
-            true
-        );
-    }
+
+
+   
+
+
+
 }

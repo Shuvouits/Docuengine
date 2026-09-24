@@ -105,13 +105,7 @@ class TenantRoleRepository
             ->exists();
     }
 
-    public function roleHasInvitations(
-    Role $role
-): bool {
-    return DB::table('tenant_invitations')
-        ->where('role_id', $role->id)
-        ->exists();
-}
+  
 
 
 }

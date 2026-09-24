@@ -42,6 +42,11 @@ import TenantDetailsPage from "./pages/backend/tenants/TenantDetailsPage";
 import AuditLogsPage from "./pages/backend/audit-logs/AuditLogsPage";
 import MuseumPage from "./pages/backend/museum/MuseumPage";
 import AssetLayoutsPage from "./pages/backend/asset-layouts/AssetLayoutsPage";
+import CreateAssetLayoutPage from "./pages/backend/asset-layouts/CreateAssetLayoutPage";
+import AssetLayoutDetailsPage from "./pages/backend/asset-layouts/AssetLayoutDetailsPage";
+import OptionListsPage from "./pages/backend/option-lists/OptionListsPage";
+import CompanyLayoutsPage from "./pages/backend/company-layouts/CompanyLayoutsPage";
+
 
 function App() {
     return (
@@ -164,12 +169,25 @@ function App() {
 
                     <Route element={<PermissionRoute permission="asset_layouts.view" />}>
                         <Route path="/admin/asset-layouts" element={<AdminLayout><AssetLayoutsPage /></AdminLayout>} />
+                        <Route path="/admin/asset-layouts/:id" element={<AdminLayout><AssetLayoutDetailsPage /></AdminLayout>} />
                     </Route>
 
                     {/* ASSET LAYOUTS - MANAGE */}
 
                     <Route element={<PermissionRoute permission="asset_layouts.manage" />}>
                         <Route path="/admin/asset-layouts/create" element={<AdminLayout><CreateAssetLayoutPage /></AdminLayout>} />
+                    </Route>
+
+
+                    <Route element={<PermissionRoute permission="option_lists.view" />}>
+                        <Route path="/admin/option-lists" element={<AdminLayout><OptionListsPage /></AdminLayout>} />
+                    </Route>
+
+
+                    {/* COMPANY LAYOUTS */}
+
+                    <Route element={<PermissionRoute permission="asset_layouts.activate" />}>
+                        <Route path="/admin/company-layouts" element={<AdminLayout><CompanyLayoutsPage /></AdminLayout>} />
                     </Route>
 
                 </Route>
