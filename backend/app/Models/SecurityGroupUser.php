@@ -38,4 +38,7 @@ class SecurityGroupUser extends Model
             'user_id'
         );
     }
+
+
+    
 }

@@ -16,6 +16,7 @@ import SecurityGroupsStats from "../../../component/admin/security-groups/Securi
 import SecurityGroupsTable from "../../../component/admin/security-groups/SecurityGroupsTable";
 import SecurityGroupFormModal from "../../../component/admin/security-groups/SecurityGroupFormModal";
 import SecurityGroupMembersModal from "../../../component/admin/security-groups/SecurityGroupMembersModal";
+import SecurityGroupCompanyAccessModal from "../../../component/admin/security-groups/SecurityGroupCompanyAccessModal";
 import SecurityGroupDeleteModal from "../../../component/admin/security-groups/SecurityGroupDeleteModal";
 import SecurityGroupsAlert from "../../../component/admin/security-groups/SecurityGroupsAlert";
 
@@ -52,48 +53,126 @@ const SecurityGroupsPage = ({
             "security_groups.assign"
         );
 
-    const [groups, setGroups] =
-        useState([]);
+    /**
+     * --------------------------------------------------------------------------
+     * Main Data
+     * --------------------------------------------------------------------------
+     */
 
-    const [tenantUsers, setTenantUsers] =
-        useState([]);
+    const [
+        groups,
+        setGroups,
+    ] = useState([]);
 
-    const [loading, setLoading] =
-        useState(true);
+    const [
+        tenantUsers,
+        setTenantUsers,
+    ] = useState([]);
 
-    const [refreshing, setRefreshing] =
-        useState(false);
+    /**
+     * --------------------------------------------------------------------------
+     * Company Access Data
+     * --------------------------------------------------------------------------
+     */
+
+    const [
+        companies,
+        setCompanies,
+    ] = useState([]);
+
+    const [
+        companyRestrictions,
+        setCompanyRestrictions,
+    ] = useState([]);
+
+    /**
+     * --------------------------------------------------------------------------
+     * Loading States
+     * --------------------------------------------------------------------------
+     */
+
+    const [
+        loading,
+        setLoading,
+    ] = useState(true);
+
+    const [
+        refreshing,
+        setRefreshing,
+    ] = useState(false);
 
     const [
         actionLoading,
         setActionLoading,
     ] = useState(false);
 
-    const [search, setSearch] =
-        useState("");
+    const [
+        companyAccessLoading,
+        setCompanyAccessLoading,
+    ] = useState(false);
 
-    const [error, setError] =
-        useState("");
+    /**
+     * --------------------------------------------------------------------------
+     * UI State
+     * --------------------------------------------------------------------------
+     */
 
-    const [message, setMessage] =
-        useState("");
+    const [
+        search,
+        setSearch,
+    ] = useState("");
 
-    const [createOpen, setCreateOpen] =
-        useState(false);
+    const [
+        error,
+        setError,
+    ] = useState("");
 
-    const [editGroup, setEditGroup] =
-        useState(null);
+    const [
+        message,
+        setMessage,
+    ] = useState("");
 
-    const [membersGroup, setMembersGroup] =
-        useState(null);
+    const [
+        createOpen,
+        setCreateOpen,
+    ] = useState(false);
 
-    const [deleteGroup, setDeleteGroup] =
-        useState(null);
+    const [
+        editGroup,
+        setEditGroup,
+    ] = useState(null);
+
+    const [
+        membersGroup,
+        setMembersGroup,
+    ] = useState(null);
+
+    const [
+        companyAccessGroup,
+        setCompanyAccessGroup,
+    ] = useState(null);
+
+    const [
+        deleteGroup,
+        setDeleteGroup,
+    ] = useState(null);
+
+    /**
+     * --------------------------------------------------------------------------
+     * Helpers
+     * --------------------------------------------------------------------------
+     */
 
     const clearMessages = () => {
         setError("");
         setMessage("");
     };
+
+    /**
+     * --------------------------------------------------------------------------
+     * Load Security Groups
+     * --------------------------------------------------------------------------
+     */
 
     const loadGroups = async (
         showLoader = true
@@ -101,6 +180,7 @@ const SecurityGroupsPage = ({
         if (!tenantId) {
             setGroups([]);
             setLoading(false);
+
             return;
         }
 
@@ -113,9 +193,10 @@ const SecurityGroupsPage = ({
         setError("");
 
         try {
-            const response = await api.get(
-                `/tenants/${tenantId}/security-groups`
-            );
+            const response =
+                await api.get(
+                    `/tenants/${tenantId}/security-groups`
+                );
 
             setGroups(
                 response.data?.data
@@ -137,27 +218,43 @@ const SecurityGroupsPage = ({
         }
     };
 
-    const loadTenantUsers = async () => {
-        if (!tenantId) {
-            setTenantUsers([]);
-            return;
-        }
+    /**
+     * --------------------------------------------------------------------------
+     * Load Tenant Users
+     * --------------------------------------------------------------------------
+     */
 
-        try {
-            const response = await api.get(
-                `/tenants/${tenantId}/users`
-            );
+    const loadTenantUsers =
+        async () => {
+            if (!tenantId) {
+                setTenantUsers([]);
 
-            setTenantUsers(
-                response.data?.data?.users || []
-            );
-        } catch (error) {
-            console.error(
-                "Unable to load tenant users:",
-                error
-            );
-        }
-    };
+                return;
+            }
+
+            try {
+                const response =
+                    await api.get(
+                        `/tenants/${tenantId}/users`
+                    );
+
+                setTenantUsers(
+                    response.data?.data
+                        ?.users || []
+                );
+            } catch (error) {
+                console.error(
+                    "Unable to load tenant users:",
+                    error
+                );
+            }
+        };
+
+    /**
+     * --------------------------------------------------------------------------
+     * Initial Load
+     * --------------------------------------------------------------------------
+     */
 
     useEffect(() => {
         if (authLoading) {
@@ -175,6 +272,12 @@ const SecurityGroupsPage = ({
         canAssign,
     ]);
 
+    /**
+     * --------------------------------------------------------------------------
+     * Filter Security Groups
+     * --------------------------------------------------------------------------
+     */
+
     const filteredGroups =
         useMemo(() => {
             const keyword =
@@ -190,46 +293,72 @@ const SecurityGroupsPage = ({
                 (group) =>
                     group.name
                         ?.toLowerCase()
-                        .includes(keyword) ||
+                        .includes(
+                            keyword
+                        ) ||
                     group.description
                         ?.toLowerCase()
-                        .includes(keyword) ||
-                    group.created_by?.name
+                        .includes(
+                            keyword
+                        ) ||
+                    group.created_by
+                        ?.name
                         ?.toLowerCase()
-                        .includes(keyword)
+                        .includes(
+                            keyword
+                        )
             );
         }, [
             groups,
             search,
         ]);
 
-    const stats = useMemo(() => {
-        const system =
-            groups.filter(
-                (group) =>
-                    group.is_system
-            ).length;
+    /**
+     * --------------------------------------------------------------------------
+     * Statistics
+     * --------------------------------------------------------------------------
+     */
 
-        const custom =
-            groups.length - system;
+    const stats =
+        useMemo(() => {
+            const system =
+                groups.filter(
+                    (group) =>
+                        group.is_system
+                ).length;
 
-        const members =
-            groups.reduce(
-                (total, group) =>
-                    total +
-                    Number(
-                        group.users_count || 0
-                    ),
-                0
-            );
+            const custom =
+                groups.length -
+                system;
 
-        return {
-            total: groups.length,
-            system,
-            custom,
-            members,
-        };
-    }, [groups]);
+            const members =
+                groups.reduce(
+                    (
+                        total,
+                        group
+                    ) =>
+                        total +
+                        Number(
+                            group.users_count ||
+                                0
+                        ),
+                    0
+                );
+
+            return {
+                total:
+                    groups.length,
+                system,
+                custom,
+                members,
+            };
+        }, [groups]);
+
+    /**
+     * --------------------------------------------------------------------------
+     * Create Security Group
+     * --------------------------------------------------------------------------
+     */
 
     const handleCreate = async (
         form
@@ -268,12 +397,19 @@ const SecurityGroupsPage = ({
         }
     };
 
+    /**
+     * --------------------------------------------------------------------------
+     * Update Security Group
+     * --------------------------------------------------------------------------
+     */
+
     const handleUpdate = async (
         form
     ) => {
         if (!editGroup) {
             return {
                 ok: false,
+
                 message:
                     "Security group could not be identified.",
             };
@@ -313,37 +449,56 @@ const SecurityGroupsPage = ({
         }
     };
 
-    const handleDelete = async () => {
-        if (!deleteGroup) {
-            return;
-        }
+    /**
+     * --------------------------------------------------------------------------
+     * Delete Security Group
+     * --------------------------------------------------------------------------
+     */
 
-        setActionLoading(true);
-        clearMessages();
+    const handleDelete =
+        async () => {
+            if (!deleteGroup) {
+                return;
+            }
 
-        try {
-            await api.delete(
-                `/tenants/${tenantId}/security-groups/${deleteGroup.id}`
-            );
+            setActionLoading(true);
+            clearMessages();
 
-            setDeleteGroup(null);
+            try {
+                await api.delete(
+                    `/tenants/${tenantId}/security-groups/${deleteGroup.id}`
+                );
 
-            setMessage(
-                "Security group deleted successfully."
-            );
+                setDeleteGroup(
+                    null
+                );
 
-            await loadGroups(false);
-        } catch (error) {
-            setError(
-                getApiError(
-                    error,
-                    "Unable to delete security group."
-                )
-            );
-        } finally {
-            setActionLoading(false);
-        }
-    };
+                setMessage(
+                    "Security group deleted successfully."
+                );
+
+                await loadGroups(
+                    false
+                );
+            } catch (error) {
+                setError(
+                    getApiError(
+                        error,
+                        "Unable to delete security group."
+                    )
+                );
+            } finally {
+                setActionLoading(
+                    false
+                );
+            }
+        };
+
+    /**
+     * --------------------------------------------------------------------------
+     * Add Security Group Member
+     * --------------------------------------------------------------------------
+     */
 
     const handleAddUser = async (
         groupId,
@@ -375,35 +530,379 @@ const SecurityGroupsPage = ({
         }
     };
 
-    const handleRemoveUser = async (
-        groupId,
-        userId
-    ) => {
-        setActionLoading(true);
+    /**
+     * --------------------------------------------------------------------------
+     * Remove Security Group Member
+     * --------------------------------------------------------------------------
+     */
 
-        try {
-            await api.delete(
-                `/tenants/${tenantId}/security-groups/${groupId}/users/${userId}`
+    const handleRemoveUser =
+        async (
+            groupId,
+            userId
+        ) => {
+            setActionLoading(true);
+
+            try {
+                await api.delete(
+                    `/tenants/${tenantId}/security-groups/${groupId}/users/${userId}`
+                );
+
+                await loadGroups(
+                    false
+                );
+
+                return {
+                    ok: true,
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+
+                    message:
+                        getApiError(
+                            error,
+                            "Unable to remove user from security group."
+                        ),
+                };
+            } finally {
+                setActionLoading(
+                    false
+                );
+            }
+        };
+
+    /**
+     * --------------------------------------------------------------------------
+     * Load Company Restrictions
+     * --------------------------------------------------------------------------
+     */
+
+    const loadCompanyRestrictions =
+        async (
+            groupId
+        ) => {
+            if (
+                !tenantId ||
+                !groupId
+            ) {
+                setCompanyRestrictions(
+                    []
+                );
+
+                return [];
+            }
+
+            const response =
+                await api.get(
+                    `/tenants/${tenantId}/security-groups/${groupId}/restrictions`
+                );
+
+            const restrictions =
+                response.data?.data
+                    ?.restrictions ||
+                [];
+
+            const result =
+                Array.isArray(
+                    restrictions
+                )
+                    ? restrictions
+                    : [];
+
+            setCompanyRestrictions(
+                result
             );
 
-            await loadGroups(false);
+            return result;
+        };
 
-            return {
-                ok: true,
-            };
-        } catch (error) {
-            return {
-                ok: false,
+    /**
+     * --------------------------------------------------------------------------
+     * Open Company Access
+     * --------------------------------------------------------------------------
+     */
 
-                message: getApiError(
-                    error,
-                    "Unable to remove user from security group."
-                ),
-            };
-        } finally {
-            setActionLoading(false);
-        }
-    };
+    const handleOpenCompanyAccess =
+        async (
+            group
+        ) => {
+            if (
+                !tenantId ||
+                !group?.id
+            ) {
+                return;
+            }
+
+            clearMessages();
+
+            setCompanyAccessGroup(
+                group
+            );
+
+            setCompanies([]);
+            setCompanyRestrictions([]);
+
+            setCompanyAccessLoading(
+                true
+            );
+
+            try {
+                const [
+                    companiesResponse,
+                    restrictionsResponse,
+                ] =
+                    await Promise.all([
+                        api.get(
+                            `/tenants/${tenantId}/companies/options`
+                        ),
+
+                        api.get(
+                            `/tenants/${tenantId}/security-groups/${group.id}/restrictions`
+                        ),
+                    ]);
+
+                const companyData =
+                    companiesResponse
+                        .data?.data
+                        ?.companies ||
+                    [];
+
+                const restrictionData =
+                    restrictionsResponse
+                        .data?.data
+                        ?.restrictions ||
+                    [];
+
+                setCompanies(
+                    Array.isArray(
+                        companyData
+                    )
+                        ? companyData
+                        : []
+                );
+
+                setCompanyRestrictions(
+                    Array.isArray(
+                        restrictionData
+                    )
+                        ? restrictionData
+                        : []
+                );
+            } catch (error) {
+                setCompanyAccessGroup(
+                    null
+                );
+
+                setCompanies([]);
+                setCompanyRestrictions(
+                    []
+                );
+
+                setError(
+                    getApiError(
+                        error,
+                        "Unable to load company access."
+                    )
+                );
+            } finally {
+                setCompanyAccessLoading(
+                    false
+                );
+            }
+        };
+
+    /**
+     * --------------------------------------------------------------------------
+     * Change Company Access
+     * --------------------------------------------------------------------------
+     */
+
+    const handleCompanyAccessChange =
+        async ({
+            company,
+            accessLevel,
+            restriction,
+        }) => {
+            if (
+                !tenantId ||
+                !companyAccessGroup?.id ||
+                !company?.id
+            ) {
+                return {
+                    ok: false,
+                };
+            }
+
+            if (
+                accessLevel ===
+                "unrestricted"
+            ) {
+                return {
+                    ok: true,
+                };
+            }
+
+            clearMessages();
+
+            const baseUrl =
+                `/tenants/${tenantId}` +
+                `/security-groups/${companyAccessGroup.id}` +
+                `/restrictions`;
+
+            const currentCompanyRestrictions =
+                companyRestrictions.filter(
+                    (
+                        currentRestriction
+                    ) =>
+                        currentRestriction.resource_type ===
+                        "company"
+                );
+
+            /**
+             * Important:
+             *
+             * Deleting the final company restriction
+             * would make the group unrestricted.
+             *
+             * Because "No Access" must never accidentally
+             * become "All Companies", we prevent that here.
+             */
+            if (
+                accessLevel ===
+                    "none" &&
+                restriction &&
+                currentCompanyRestrictions.length <=
+                    1
+            ) {
+                setError(
+                    "The final company restriction cannot be removed because a group with zero company restrictions becomes unrestricted. Add access to another company first."
+                );
+
+                return {
+                    ok: false,
+                };
+            }
+
+            setCompanyAccessLoading(
+                true
+            );
+
+            try {
+                /**
+                 * Remove existing access
+                 */
+                if (
+                    accessLevel ===
+                    "none"
+                ) {
+                    if (
+                        !restriction
+                    ) {
+                        return {
+                            ok: true,
+                        };
+                    }
+
+                    await api.delete(
+                        `${baseUrl}/${restriction.id}`
+                    );
+                }
+
+                /**
+                 * Update existing access
+                 */
+                else if (
+                    restriction
+                ) {
+                    await api.patch(
+                        `${baseUrl}/${restriction.id}`,
+                        {
+                            access_level:
+                                accessLevel,
+                        }
+                    );
+                }
+
+                /**
+                 * Create new company restriction
+                 */
+                else {
+                    await api.post(
+                        baseUrl,
+                        {
+                            resource_type:
+                                "company",
+
+                            resource_id:
+                                company.id,
+
+                            access_level:
+                                accessLevel,
+                        }
+                    );
+                }
+
+                await loadCompanyRestrictions(
+                    companyAccessGroup.id
+                );
+
+                return {
+                    ok: true,
+                };
+            } catch (error) {
+                const apiMessage =
+                    getApiError(
+                        error,
+                        "Unable to update company access."
+                    );
+
+                setError(
+                    apiMessage
+                );
+
+                return {
+                    ok: false,
+                    message:
+                        apiMessage,
+                };
+            } finally {
+                setCompanyAccessLoading(
+                    false
+                );
+            }
+        };
+
+    /**
+     * --------------------------------------------------------------------------
+     * Close Company Access
+     * --------------------------------------------------------------------------
+     */
+
+    const handleCloseCompanyAccess =
+        () => {
+            if (
+                companyAccessLoading
+            ) {
+                return;
+            }
+
+            setCompanyAccessGroup(
+                null
+            );
+
+            setCompanies([]);
+
+            setCompanyRestrictions(
+                []
+            );
+        };
+
+    /**
+     * --------------------------------------------------------------------------
+     * No Tenant
+     * --------------------------------------------------------------------------
+     */
 
     if (
         !authLoading &&
@@ -417,16 +916,25 @@ const SecurityGroupsPage = ({
                 />
 
                 <h2 className="mt-4 text-lg font-bold text-[#07111f]">
-                    No organization selected
+                    No organization
+                    selected
                 </h2>
 
                 <p className="mt-2 text-sm text-slate-500">
-                    Select an organization before
-                    managing security groups.
+                    Select an
+                    organization before
+                    managing security
+                    groups.
                 </p>
             </div>
         );
     }
+
+    /**
+     * --------------------------------------------------------------------------
+     * Loading
+     * --------------------------------------------------------------------------
+     */
 
     if (
         loading ||
@@ -441,12 +949,19 @@ const SecurityGroupsPage = ({
                     />
 
                     <p className="mt-3 text-sm text-slate-500">
-                        Loading security groups...
+                        Loading security
+                        groups...
                     </p>
                 </div>
             </div>
         );
     }
+
+    /**
+     * --------------------------------------------------------------------------
+     * Page
+     * --------------------------------------------------------------------------
+     */
 
     return (
         <div className="space-y-6">
@@ -454,21 +969,32 @@ const SecurityGroupsPage = ({
                 tenantName={
                     currentTenant?.name
                 }
-                refreshing={refreshing}
-                canCreate={canCreate}
+                refreshing={
+                    refreshing
+                }
+                canCreate={
+                    canCreate
+                }
                 onRefresh={() =>
-                    loadGroups(false)
+                    loadGroups(
+                        false
+                    )
                 }
                 onCreate={() => {
                     clearMessages();
-                    setCreateOpen(true);
+
+                    setCreateOpen(
+                        true
+                    );
                 }}
             />
 
             {error && (
                 <SecurityGroupsAlert
                     type="error"
-                    message={error}
+                    message={
+                        error
+                    }
                     onClose={() =>
                         setError("")
                     }
@@ -478,7 +1004,9 @@ const SecurityGroupsPage = ({
             {message && (
                 <SecurityGroupsAlert
                     type="success"
-                    message={message}
+                    message={
+                        message
+                    }
                     onClose={() =>
                         setMessage("")
                     }
@@ -490,33 +1018,58 @@ const SecurityGroupsPage = ({
             />
 
             <SecurityGroupsTable
-                groups={filteredGroups}
+                groups={
+                    filteredGroups
+                }
                 totalGroups={
                     groups.length
                 }
                 search={search}
-                setSearch={setSearch}
-                canUpdate={canUpdate}
-                canDelete={canDelete}
-                canAssign={canAssign}
-                onEdit={(group) => {
+                setSearch={
+                    setSearch
+                }
+                canUpdate={
+                    canUpdate
+                }
+                canDelete={
+                    canDelete
+                }
+                canAssign={
+                    canAssign
+                }
+                onEdit={(
+                    group
+                ) => {
                     clearMessages();
-                    setEditGroup(group);
+
+                    setEditGroup(
+                        group
+                    );
                 }}
-                onMembers={(group) => {
+                onMembers={(
+                    group
+                ) => {
                     clearMessages();
+
                     setMembersGroup(
                         group
                     );
                 }}
-                onDelete={(group) => {
+                onCompanyAccess={
+                    handleOpenCompanyAccess
+                }
+                onDelete={(
+                    group
+                ) => {
                     clearMessages();
+
                     setDeleteGroup(
                         group
                     );
                 }}
             />
 
+            {/* Create */}
             {createOpen && (
                 <SecurityGroupFormModal
                     title="Create Security Group"
@@ -539,11 +1092,14 @@ const SecurityGroupsPage = ({
                 />
             )}
 
+            {/* Edit */}
             {editGroup && (
                 <SecurityGroupFormModal
                     title="Edit Security Group"
                     description="Update the name and description of this security group."
-                    group={editGroup}
+                    group={
+                        editGroup
+                    }
                     loading={
                         actionLoading
                     }
@@ -562,11 +1118,14 @@ const SecurityGroupsPage = ({
                 />
             )}
 
+            {/* Members */}
             {membersGroup && (
                 <SecurityGroupMembersModal
                     group={
                         groups.find(
-                            (group) =>
+                            (
+                                group
+                            ) =>
                                 group.id ===
                                 membersGroup.id
                         ) ||
@@ -596,9 +1155,36 @@ const SecurityGroupsPage = ({
                 />
             )}
 
+            {/* Company Access */}
+            {companyAccessGroup && (
+                <SecurityGroupCompanyAccessModal
+                    group={
+                        companyAccessGroup
+                    }
+                    companies={
+                        companies
+                    }
+                    restrictions={
+                        companyRestrictions
+                    }
+                    loading={
+                        companyAccessLoading
+                    }
+                    onClose={
+                        handleCloseCompanyAccess
+                    }
+                    onChangeAccess={
+                        handleCompanyAccessChange
+                    }
+                />
+            )}
+
+            {/* Delete */}
             {deleteGroup && (
                 <SecurityGroupDeleteModal
-                    group={deleteGroup}
+                    group={
+                        deleteGroup
+                    }
                     loading={
                         actionLoading
                     }
@@ -620,12 +1206,19 @@ const SecurityGroupsPage = ({
     );
 };
 
+/**
+ * --------------------------------------------------------------------------
+ * API Error Helper
+ * --------------------------------------------------------------------------
+ */
+
 const getApiError = (
     error,
     fallback
 ) => {
     const validationErrors =
-        error.response?.data?.errors;
+        error.response?.data
+            ?.errors;
 
     if (validationErrors) {
         const first =
@@ -639,7 +1232,8 @@ const getApiError = (
     }
 
     return (
-        error.response?.data?.message ||
+        error.response?.data
+            ?.message ||
         fallback
     );
 };

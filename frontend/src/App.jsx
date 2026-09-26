@@ -46,6 +46,8 @@ import CreateAssetLayoutPage from "./pages/backend/asset-layouts/CreateAssetLayo
 import AssetLayoutDetailsPage from "./pages/backend/asset-layouts/AssetLayoutDetailsPage";
 import OptionListsPage from "./pages/backend/option-lists/OptionListsPage";
 import CompanyLayoutsPage from "./pages/backend/company-layouts/CompanyLayoutsPage";
+import CompaniesPage from "./pages/backend/companies/CompaniesPage";
+import CompanyWorkspacePage from "./pages/backend/companies/CompanyWorkspacePage";
 
 
 function App() {
@@ -188,6 +190,11 @@ function App() {
 
                     <Route element={<PermissionRoute permission="asset_layouts.activate" />}>
                         <Route path="/admin/company-layouts" element={<AdminLayout><CompanyLayoutsPage /></AdminLayout>} />
+                    </Route>
+
+                    <Route element={<PermissionRoute permission="companies.view" />}>
+                        <Route path="/admin/companies" element={<AdminLayout><CompaniesPage /></AdminLayout>} />
+                        <Route path="/admin/companies/:companyId/workspace" element={<AdminLayout><CompanyWorkspacePage /></AdminLayout>} />
                     </Route>
 
                 </Route>

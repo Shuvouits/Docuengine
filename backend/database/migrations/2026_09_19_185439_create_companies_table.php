@@ -17,17 +17,75 @@ return new class extends Migration
             |--------------------------------------------------------------------------
             */
 
-            $table->uuid('tenant_id')->index();
+            $table->uuid('tenant_id')
+                ->index();
 
             /*
             |--------------------------------------------------------------------------
-            | Basic Information
+            | Company Profile
             |--------------------------------------------------------------------------
             */
 
             $table->string('name');
 
+            $table->string('legal_name')
+                ->nullable();
+
             $table->string('slug');
+
+            $table->string('website')
+                ->nullable();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Primary Contact
+            |--------------------------------------------------------------------------
+            */
+
+            $table->string('primary_contact_name')
+                ->nullable();
+
+            $table->string('primary_contact_email')
+                ->nullable();
+
+            $table->string('primary_contact_phone', 50)
+                ->nullable();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Address / Location
+            |--------------------------------------------------------------------------
+            */
+
+            $table->string('address_line1')
+                ->nullable();
+
+            $table->string('address_line2')
+                ->nullable();
+
+            $table->string('city', 150)
+                ->nullable();
+
+            $table->string('state_region', 150)
+                ->nullable();
+
+            $table->string('postal_code', 50)
+                ->nullable();
+
+            $table->string('country', 150)
+                ->nullable();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Internal Documentation
+            |--------------------------------------------------------------------------
+            */
+
+            $table->text('description')
+                ->nullable();
+
+            $table->longText('notes')
+                ->nullable();
 
             /*
             |--------------------------------------------------------------------------
@@ -37,6 +95,14 @@ return new class extends Migration
 
             $table->string('status')
                 ->default('active')
+                ->index();
+
+            $table->timestamp('archived_at')
+                ->nullable()
+                ->index();
+
+            $table->uuid('archived_by')
+                ->nullable()
                 ->index();
 
             /*
@@ -69,7 +135,7 @@ return new class extends Migration
 
             /*
             |--------------------------------------------------------------------------
-            | Constraints
+            | Constraints / Indexes
             |--------------------------------------------------------------------------
             */
 
@@ -87,6 +153,14 @@ return new class extends Migration
                     'status',
                 ],
                 'companies_tenant_status_index'
+            );
+
+            $table->index(
+                [
+                    'tenant_id',
+                    'name',
+                ],
+                'companies_tenant_name_index'
             );
         });
     }

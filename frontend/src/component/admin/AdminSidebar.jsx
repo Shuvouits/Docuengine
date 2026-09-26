@@ -293,6 +293,29 @@ function AdminSidebar({
           ]
         : [];
 
+
+
+
+        /*
+|--------------------------------------------------------------------------
+| Companies
+|--------------------------------------------------------------------------
+*/
+
+const companyItems = currentTenant
+    ? [
+          ...(can("companies.view")
+              ? [
+                    {
+                        label: "Companies",
+                        path: "/admin/companies",
+                        icon: Building2,
+                    },
+                ]
+              : []),
+      ]
+    : [];
+
    
 
           /*
@@ -799,6 +822,11 @@ const documentationItems = currentTenant
                         "Organization",
                         organizationItems
                     )}
+
+                    {renderSection(
+    "Companies",
+    companyItems
+)}
 
                     {renderSection(
                         "Documentation",

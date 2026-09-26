@@ -16,6 +16,10 @@ use App\Http\Controllers\Api\Tenant\AssetLayoutSectionController;
 use App\Http\Controllers\Api\Tenant\AssetLayoutValidationController;
 use App\Http\Controllers\Api\Tenant\AssetLayoutVersionController;
 use App\Http\Controllers\Api\Tenant\AuditEventController;
+use App\Http\Controllers\Api\Tenant\CompanyContextController;
+use App\Http\Controllers\Api\Tenant\CompanyController;
+use App\Http\Controllers\Api\Tenant\CompanyWorkspaceController;
+use App\Http\Controllers\Api\Tenant\GlobalWorkspaceController;
 use App\Http\Controllers\Api\Tenant\OptionListController;
 use App\Http\Controllers\Api\Tenant\OptionListItemController;
 use App\Http\Controllers\Api\Tenant\SecurityEventController;
@@ -1152,4 +1156,80 @@ Route::prefix(
             '/{archiveEntryId}',
             [ArchiveController::class, 'show']
         );
+    });
+
+
+/*
+|--------------------------------------------------------------------------
+| Module 3 - Companies
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
+    ->prefix('tenants/{tenantId}/companies')
+    ->group(function () {
+        Route::get('/summary', [CompanyController::class, 'summary'])
+            ->middleware('permission:companies.view');
+
+        Route::get('/options', [CompanyController::class, 'options'])
+            ->middleware('permission:companies.view');
+
+        Route::get('/', [CompanyController::class, 'index'])
+            ->middleware('permission:companies.view');
+
+        Route::post('/', [CompanyController::class, 'store'])
+            ->middleware('permission:companies.create');
+
+        Route::get('/{companyId}', [CompanyController::class, 'show'])
+            ->middleware('permission:companies.view');
+
+        Route::patch('/{companyId}', [CompanyController::class, 'update'])
+            ->middleware('permission:companies.update');
+
+        Route::delete('/{companyId}', [CompanyController::class, 'destroy'])
+            ->middleware('permission:companies.archive');
+
+        Route::post('/{companyId}/restore', [CompanyController::class, 'restore'])
+            ->middleware('permission:companies.restore');
+
+        Route::get('/{companyId}/workspace', [CompanyWorkspaceController::class, 'show'])
+            ->middleware('permission:companies.view');
+    });
+
+
+/*
+|--------------------------------------------------------------------------
+| Module 3 - Global Workspace
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware([
+    'auth:api',
+    'auth.session',
+    'tenant.resolve:tenantId',
+    'permission:companies.view',
+])
+    ->prefix('tenants/{tenantId}/workspace')
+    ->group(function () {
+        Route::get('/', [GlobalWorkspaceController::class, 'index']);
+    });
+
+
+/*
+|--------------------------------------------------------------------------
+| Module 3 - Company Context
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware([
+    'auth:api',
+    'auth.session',
+    'tenant.resolve:tenantId',
+    'permission:companies.view',
+])
+    ->prefix('tenants/{tenantId}/company-context')
+    ->group(function () {
+        Route::get('/', [CompanyContextController::class, 'show']);
+
+        Route::patch('/', [CompanyContextController::class, 'update']);
     });

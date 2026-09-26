@@ -1,4 +1,5 @@
 import {
+    Building2,
     Edit3,
     LockKeyhole,
     Search,
@@ -17,6 +18,7 @@ const SecurityGroupsTable = ({
     canAssign,
     onEdit,
     onMembers,
+    onCompanyAccess,
     onDelete,
 }) => {
     return (
@@ -43,7 +45,7 @@ const SecurityGroupsTable = ({
             </div>
 
             <div className="overflow-x-auto">
-                <table className="w-full min-w-[1000px]">
+                <table className="w-full min-w-[1100px]">
                     <thead>
                         <tr className="border-b border-slate-100 bg-slate-50/70">
                             <TableHead>
@@ -104,6 +106,7 @@ const SecurityGroupsTable = ({
                                                         11
                                                     }
                                                 />
+
                                                 System
                                             </span>
                                         ) : (
@@ -131,12 +134,14 @@ const SecurityGroupsTable = ({
 
                                     <td className="px-5 py-4">
                                         <p className="text-xs font-semibold text-slate-700">
-                                            {group.created_by?.name ||
+                                            {group.created_by
+                                                ?.name ||
                                                 "System"}
                                         </p>
 
                                         <p className="mt-1 text-[11px] text-slate-400">
-                                            {group.created_by?.email ||
+                                            {group.created_by
+                                                ?.email ||
                                                 ""}
                                         </p>
                                     </td>
@@ -153,7 +158,7 @@ const SecurityGroupsTable = ({
                                                 <button
                                                     type="button"
                                                     onClick={() =>
-                                                        onMembers(
+                                                        onMembers?.(
                                                             group
                                                         )
                                                     }
@@ -164,6 +169,7 @@ const SecurityGroupsTable = ({
                                                             14
                                                         }
                                                     />
+
                                                     Members
                                                 </button>
                                             )}
@@ -172,7 +178,27 @@ const SecurityGroupsTable = ({
                                                 <button
                                                     type="button"
                                                     onClick={() =>
-                                                        onEdit(
+                                                        onCompanyAccess?.(
+                                                            group
+                                                        )
+                                                    }
+                                                    className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-[#19b5fe]/40 hover:text-[#159edb]"
+                                                >
+                                                    <Building2
+                                                        size={
+                                                            14
+                                                        }
+                                                    />
+
+                                                    Company Access
+                                                </button>
+                                            )}
+
+                                            {canUpdate && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        onEdit?.(
                                                             group
                                                         )
                                                     }
@@ -183,6 +209,7 @@ const SecurityGroupsTable = ({
                                                             14
                                                         }
                                                     />
+
                                                     Edit
                                                 </button>
                                             )}
@@ -192,7 +219,7 @@ const SecurityGroupsTable = ({
                                                     <button
                                                         type="button"
                                                         onClick={() =>
-                                                            onDelete(
+                                                            onDelete?.(
                                                                 group
                                                             )
                                                         }
@@ -203,6 +230,7 @@ const SecurityGroupsTable = ({
                                                                 14
                                                             }
                                                         />
+
                                                         Delete
                                                     </button>
                                                 )}
@@ -270,7 +298,9 @@ const formatDate = (value) => {
         {
             dateStyle: "medium",
         }
-    ).format(new Date(value));
+    ).format(
+        new Date(value)
+    );
 };
 
 export default SecurityGroupsTable;

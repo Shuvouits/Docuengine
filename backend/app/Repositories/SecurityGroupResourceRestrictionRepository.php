@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Models\SecurityGroupResourceRestriction;
 use Illuminate\Database\Eloquent\Collection;
+use App\Models\SecurityGroupUser;
 
 class SecurityGroupResourceRestrictionRepository
 {
@@ -98,4 +99,139 @@ class SecurityGroupResourceRestrictionRepository
             ->where('resource_id', $resourceId)
             ->exists();
     }
+
+
+    /*
+|--------------------------------------------------------------------------
+| User Security Groups
+|--------------------------------------------------------------------------
+*/
+
+public function groupIdsForUser(
+    string $tenantId,
+    string $userId
+): array {
+    return SecurityGroupUser::query()
+        ->where(
+            'tenant_id',
+            $tenantId
+        )
+        ->where(
+            'user_id',
+            $userId
+        )
+        ->pluck(
+            'security_group_id'
+        )
+        ->unique()
+        ->values()
+        ->all();
+}
+
+/*
+|--------------------------------------------------------------------------
+| Check Whether Groups Restrict A Resource Type
+|--------------------------------------------------------------------------
+*/
+
+public function hasRestrictionsForGroupsAndType(
+    string $tenantId,
+    array $groupIds,
+    string $resourceType
+): bool {
+    if (empty($groupIds)) {
+        return false;
+    }
+
+    return SecurityGroupResourceRestriction::query()
+        ->where(
+            'tenant_id',
+            $tenantId
+        )
+        ->whereIn(
+            'security_group_id',
+            $groupIds
+        )
+        ->where(
+            'resource_type',
+            $resourceType
+        )
+        ->exists();
+}
+
+/*
+|--------------------------------------------------------------------------
+| Matching Resource Restrictions
+|--------------------------------------------------------------------------
+*/
+
+public function matchingForGroups(
+    string $tenantId,
+    array $groupIds,
+    string $resourceType,
+    string $resourceId
+): Collection {
+    if (empty($groupIds)) {
+        return new Collection();
+    }
+
+    return SecurityGroupResourceRestriction::query()
+        ->where(
+            'tenant_id',
+            $tenantId
+        )
+        ->whereIn(
+            'security_group_id',
+            $groupIds
+        )
+        ->where(
+            'resource_type',
+            $resourceType
+        )
+        ->where(
+            'resource_id',
+            $resourceId
+        )
+        ->get();
+}
+
+/*
+|--------------------------------------------------------------------------
+| Allowed Resource IDs
+|--------------------------------------------------------------------------
+*/
+
+public function resourceIdsForGroups(
+    string $tenantId,
+    array $groupIds,
+    string $resourceType
+): array {
+    if (empty($groupIds)) {
+        return [];
+    }
+
+    return SecurityGroupResourceRestriction::query()
+        ->where(
+            'tenant_id',
+            $tenantId
+        )
+        ->whereIn(
+            'security_group_id',
+            $groupIds
+        )
+        ->where(
+            'resource_type',
+            $resourceType
+        )
+        ->pluck(
+            'resource_id'
+        )
+        ->unique()
+        ->values()
+        ->all();
+}
+
+
+
+
 }

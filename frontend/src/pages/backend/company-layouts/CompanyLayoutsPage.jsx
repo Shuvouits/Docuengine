@@ -19,36 +19,16 @@ import CompanyLayoutAssignmentsPanel from "../../../component/admin/company-layo
 import CompanyLayoutActionModal from "../../../component/admin/company-layouts/CompanyLayoutActionModal";
 import CompanyLayoutsAlert from "../../../component/admin/company-layouts/CompanyLayoutsAlert";
 
-/*
-|--------------------------------------------------------------------------
-| Current Module 5 Company Foundation
-|--------------------------------------------------------------------------
-|
-| Module 5 backend already has company-specific layout activation.
-| Acme is the verified Second MSP company used during backend testing.
-|
-*/
-
-const VERIFIED_COMPANIES = [
-    {
-        id: "01a0bb20-4a1d-7b2e-8c3f-91d2e4f5a601",
-        tenant_id:
-            "01a072e3-4c45-7374-bf56-e19db4a9057f",
-        name: "Acme",
-        status: "active",
-        is_active: true,
-    },
-];
 
 function CompanyLayoutsPage({
     authData = null,
     authLoading = false,
 }) {
-    /*
-    |--------------------------------------------------------------------------
-    | Tenant
-    |--------------------------------------------------------------------------
-    */
+    /**
+     * --------------------------------------------------------------------------
+     * Tenant
+     * --------------------------------------------------------------------------
+     */
 
     const currentTenant =
         authData?.current_tenant || null;
@@ -69,32 +49,46 @@ function CompanyLayoutsPage({
             "asset_layouts.activate"
         );
 
-    /*
-    |--------------------------------------------------------------------------
-    | State
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * State
+     * --------------------------------------------------------------------------
+     */
+
+    const [companies, setCompanies] =
+        useState([]);
 
     const [layouts, setLayouts] =
         useState([]);
 
-    const [activationMap, setActivationMap] =
-        useState({});
+    const [
+        activationMap,
+        setActivationMap,
+    ] = useState({});
 
-    const [selectedCompany, setSelectedCompany] =
-        useState(null);
+    const [
+        selectedCompany,
+        setSelectedCompany,
+    ] = useState(null);
 
-    const [companySearch, setCompanySearch] =
-        useState("");
+    const [
+        companySearch,
+        setCompanySearch,
+    ] = useState("");
 
     const [loading, setLoading] =
         useState(true);
 
-    const [refreshing, setRefreshing] =
-        useState(false);
+    const [
+        refreshing,
+        setRefreshing,
+    ] = useState(false);
 
-    const [actionLoading, setActionLoading] =
-        useState(false);
+    const [
+        actionLoading,
+        setActionLoading,
+    ] = useState(false);
 
     const [error, setError] =
         useState("");
@@ -102,52 +96,116 @@ function CompanyLayoutsPage({
     const [message, setMessage] =
         useState("");
 
-    const [pendingAction, setPendingAction] =
-        useState(null);
+    const [
+        pendingAction,
+        setPendingAction,
+    ] = useState(null);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Companies
-    |--------------------------------------------------------------------------
-    |
-    | If companies later become available directly inside authData/currentTenant,
-    | this page will use them automatically.
-    |
-    | Otherwise it uses the verified Module 5 company foundation data.
-    |
-    */
 
-    const companies = useMemo(() => {
-        const tenantCompanies =
-            currentTenant?.companies ||
-            authData?.companies ||
-            [];
+    /**
+     * --------------------------------------------------------------------------
+     * Messages
+     * --------------------------------------------------------------------------
+     */
 
-        if (
-            Array.isArray(
-                tenantCompanies
-            ) &&
-            tenantCompanies.length
-        ) {
-            return tenantCompanies;
+    const clearMessages =
+        useCallback(() => {
+            setError("");
+            setMessage("");
+        }, []);
+
+
+    /**
+     * --------------------------------------------------------------------------
+     * API Response Helpers
+     * --------------------------------------------------------------------------
+     */
+
+    const extractLayouts = (
+        response
+    ) => {
+        return (
+            response.data?.data
+                ?.asset_layouts ||
+            response.data?.data
+                ?.layouts ||
+            response.data?.data ||
+            []
+        );
+    };
+
+
+    const extractActivations = (
+        response
+    ) => {
+        const data =
+            response.data?.data;
+
+        if (Array.isArray(data)) {
+            return data;
         }
 
-        return VERIFIED_COMPANIES.filter(
-            (company) =>
-                company.tenant_id ===
-                tenantId
+        return (
+            data?.asset_layout_activations ||
+            data?.activations ||
+            data?.items ||
+            []
         );
-    }, [
-        currentTenant,
-        authData,
-        tenantId,
-    ]);
+    };
 
-    /*
-    |--------------------------------------------------------------------------
-    | Filter Companies
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Load Companies
+     * --------------------------------------------------------------------------
+     *
+     * Use the real Module 3 company API.
+     * No hardcoded Acme fallback.
+     *
+     */
+
+    const loadCompanies =
+        useCallback(async () => {
+            if (!tenantId) {
+                setCompanies([]);
+
+                return [];
+            }
+
+            const response =
+                await api.get(
+                    `/tenants/${tenantId}/companies`,
+                    {
+                        params: {
+                            per_page: 100,
+                            sort_by: "name",
+                            sort_direction: "asc",
+                        },
+                    }
+                );
+
+            const result =
+                response.data?.data
+                    ?.companies || [];
+
+            const loadedCompanies =
+                Array.isArray(result)
+                    ? result
+                    : [];
+
+            setCompanies(
+                loadedCompanies
+            );
+
+            return loadedCompanies;
+        }, [tenantId]);
+
+
+    /**
+     * --------------------------------------------------------------------------
+     * Filter Companies
+     * --------------------------------------------------------------------------
+     */
 
     const filteredCompanies =
         useMemo(() => {
@@ -173,60 +231,19 @@ function CompanyLayoutsPage({
             companySearch,
         ]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Helpers
-    |--------------------------------------------------------------------------
-    */
 
-    const clearMessages =
-        useCallback(() => {
-            setError("");
-            setMessage("");
-        }, []);
-
-    const extractLayouts = (
-        response
-    ) => {
-        return (
-            response.data?.data
-                ?.asset_layouts ||
-            response.data?.data
-                ?.layouts ||
-            response.data?.data ||
-            []
-        );
-    };
-
-    const extractActivations = (
-        response
-    ) => {
-        const data =
-            response.data?.data;
-
-        if (Array.isArray(data)) {
-            return data;
-        }
-
-        return (
-            data?.asset_layout_activations ||
-            data?.activations ||
-            data?.items ||
-            []
-        );
-    };
-
-    /*
-    |--------------------------------------------------------------------------
-    | Load Asset Layouts
-    |--------------------------------------------------------------------------
-    */
+    /**
+     * --------------------------------------------------------------------------
+     * Load Asset Layouts
+     * --------------------------------------------------------------------------
+     */
 
     const loadLayouts =
         useCallback(async () => {
             if (!tenantId) {
                 setLayouts([]);
-                return;
+
+                return [];
             }
 
             const response =
@@ -239,18 +256,24 @@ function CompanyLayoutsPage({
                     response
                 );
 
-            setLayouts(
+            const loadedLayouts =
                 Array.isArray(result)
                     ? result
-                    : []
+                    : [];
+
+            setLayouts(
+                loadedLayouts
             );
+
+            return loadedLayouts;
         }, [tenantId]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Load Company Activations
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Load Company Activations
+     * --------------------------------------------------------------------------
+     */
 
     const loadCompanyActivations =
         useCallback(
@@ -284,6 +307,7 @@ function CompanyLayoutsPage({
                     setActivationMap(
                         (current) => ({
                             ...current,
+
                             [companyId]:
                                 activations,
                         })
@@ -295,72 +319,79 @@ function CompanyLayoutsPage({
             [tenantId]
         );
 
-    /*
-    |--------------------------------------------------------------------------
-    | Load All Company Activations
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Load All Company Activations
+     * --------------------------------------------------------------------------
+     */
 
     const loadAllActivations =
-        useCallback(async () => {
-            if (
-                !tenantId ||
-                !companies.length
-            ) {
-                setActivationMap({});
-                return;
-            }
+        useCallback(
+            async (
+                companyList = []
+            ) => {
+                if (
+                    !tenantId ||
+                    !companyList.length
+                ) {
+                    setActivationMap({});
 
-            const entries =
-                await Promise.all(
-                    companies.map(
-                        async (
-                            company
-                        ) => {
-                            try {
-                                const activations =
-                                    await loadCompanyActivations(
+                    return;
+                }
+
+                const entries =
+                    await Promise.all(
+                        companyList.map(
+                            async (
+                                company
+                            ) => {
+                                try {
+                                    const activations =
+                                        await loadCompanyActivations(
+                                            company.id,
+                                            false
+                                        );
+
+                                    return [
                                         company.id,
-                                        false
+                                        activations,
+                                    ];
+                                } catch (
+                                    error
+                                ) {
+                                    console.error(
+                                        `Unable to load activations for ${company.name}:`,
+                                        error
                                     );
 
-                                return [
-                                    company.id,
-                                    activations,
-                                ];
-                            } catch (
-                                error
-                            ) {
-                                console.error(
-                                    `Unable to load activations for ${company.name}:`,
-                                    error
-                                );
-
-                                return [
-                                    company.id,
-                                    [],
-                                ];
+                                    return [
+                                        company.id,
+                                        [],
+                                    ];
+                                }
                             }
-                        }
+                        )
+                    );
+
+                setActivationMap(
+                    Object.fromEntries(
+                        entries
                     )
                 );
+            },
+            [
+                tenantId,
+                loadCompanyActivations,
+            ]
+        );
 
-            setActivationMap(
-                Object.fromEntries(
-                    entries
-                )
-            );
-        }, [
-            tenantId,
-            companies,
-            loadCompanyActivations,
-        ]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Initial Load
-    |--------------------------------------------------------------------------
-    */
+    /**
+     * --------------------------------------------------------------------------
+     * Load Page
+     * --------------------------------------------------------------------------
+     */
 
     const loadPage =
         useCallback(
@@ -369,6 +400,7 @@ function CompanyLayoutsPage({
             ) => {
                 if (!tenantId) {
                     setLoading(false);
+
                     return;
                 }
 
@@ -381,9 +413,25 @@ function CompanyLayoutsPage({
                 clearMessages();
 
                 try {
+                    /*
+                    |--------------------------------------------------------------------------
+                    | Companies must load first
+                    |--------------------------------------------------------------------------
+                    |
+                    | We need the real company IDs before loading each company's
+                    | layout assignments.
+                    |
+                    */
+
+                    const loadedCompanies =
+                        await loadCompanies();
+
                     await Promise.all([
                         loadLayouts(),
-                        loadAllActivations(),
+
+                        loadAllActivations(
+                            loadedCompanies
+                        ),
                     ]);
                 } catch (error) {
                     console.error(
@@ -404,11 +452,19 @@ function CompanyLayoutsPage({
             },
             [
                 tenantId,
+                loadCompanies,
                 loadLayouts,
                 loadAllActivations,
                 clearMessages,
             ]
         );
+
+
+    /**
+     * --------------------------------------------------------------------------
+     * Initial Load
+     * --------------------------------------------------------------------------
+     */
 
     useEffect(() => {
         if (
@@ -425,19 +481,44 @@ function CompanyLayoutsPage({
         loadPage,
     ]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Auto Select Company
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Auto Select Company
+     * --------------------------------------------------------------------------
+     */
 
     useEffect(() => {
+        if (!companies.length) {
+            setSelectedCompany(
+                null
+            );
+
+            return;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Keep current selection if company still exists
+        |--------------------------------------------------------------------------
+        */
+
         if (
-            selectedCompany ||
-            !companies.length
+            selectedCompany &&
+            companies.some(
+                (company) =>
+                    company.id ===
+                    selectedCompany.id
+            )
         ) {
             return;
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Otherwise select first company
+        |--------------------------------------------------------------------------
+        */
 
         setSelectedCompany(
             companies[0]
@@ -447,22 +528,24 @@ function CompanyLayoutsPage({
         selectedCompany,
     ]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Refresh
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Refresh
+     * --------------------------------------------------------------------------
+     */
 
     const handleRefresh =
         async () => {
             await loadPage(false);
         };
 
-    /*
-    |--------------------------------------------------------------------------
-    | Open Action Confirmation
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Open Action Confirmation
+     * --------------------------------------------------------------------------
+     */
 
     const handleLayoutAction = (
         action
@@ -481,11 +564,12 @@ function CompanyLayoutsPage({
         );
     };
 
-    /*
-    |--------------------------------------------------------------------------
-    | Confirm Activate / Deactivate / Reactivate
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Confirm Activate / Deactivate / Reactivate
+     * --------------------------------------------------------------------------
+     */
 
     const handleConfirmAction =
         async () => {
@@ -510,9 +594,6 @@ function CompanyLayoutsPage({
                 |--------------------------------------------------------------------------
                 | Activate / Reactivate
                 |--------------------------------------------------------------------------
-                |
-                | Reactivation uses the same activate endpoint.
-                |
                 */
 
                 if (
@@ -527,6 +608,7 @@ function CompanyLayoutsPage({
                         }
                     );
                 }
+
 
                 /*
                 |--------------------------------------------------------------------------
@@ -547,17 +629,31 @@ function CompanyLayoutsPage({
                     );
                 }
 
+
+                /*
+                |--------------------------------------------------------------------------
+                | Reload Selected Company
+                |--------------------------------------------------------------------------
+                */
+
                 await loadCompanyActivations(
                     selectedCompany.id
                 );
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Success Message
+                |--------------------------------------------------------------------------
+                */
 
                 const actionMessage =
                     type === "deactivate"
                         ? "deactivated"
                         : type ===
-                            "reactivate"
-                          ? "reactivated"
-                          : "activated";
+                          "reactivate"
+                        ? "reactivated"
+                        : "activated";
 
                 setMessage(
                     `${layout.name} was ${actionMessage} for ${selectedCompany.name}.`
@@ -585,11 +681,12 @@ function CompanyLayoutsPage({
             }
         };
 
-    /*
-    |--------------------------------------------------------------------------
-    | Flatten Activations For Summary
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Flatten Activations For Summary
+     * --------------------------------------------------------------------------
+     */
 
     const allActivations =
         useMemo(() => {
@@ -605,11 +702,12 @@ function CompanyLayoutsPage({
             );
         }, [activationMap]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Selected Company Activations
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Selected Company Activations
+     * --------------------------------------------------------------------------
+     */
 
     const selectedActivations =
         useMemo(() => {
@@ -629,11 +727,12 @@ function CompanyLayoutsPage({
             selectedCompany,
         ]);
 
-    /*
-    |--------------------------------------------------------------------------
-    | No Organization
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * No Organization
+     * --------------------------------------------------------------------------
+     */
 
     if (
         !authLoading &&
@@ -659,11 +758,12 @@ function CompanyLayoutsPage({
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Permission
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Permission
+     * --------------------------------------------------------------------------
+     */
 
     if (
         !authLoading &&
@@ -690,11 +790,12 @@ function CompanyLayoutsPage({
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Loading
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Loading
+     * --------------------------------------------------------------------------
+     */
 
     if (
         loading ||
@@ -721,11 +822,12 @@ function CompanyLayoutsPage({
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Render
-    |--------------------------------------------------------------------------
-    */
+
+    /**
+     * --------------------------------------------------------------------------
+     * Render
+     * --------------------------------------------------------------------------
+     */
 
     return (
         <div className="space-y-6">
@@ -741,6 +843,7 @@ function CompanyLayoutsPage({
                 }
             />
 
+
             {error && (
                 <CompanyLayoutsAlert
                     type="error"
@@ -751,6 +854,7 @@ function CompanyLayoutsPage({
                 />
             )}
 
+
             {message && (
                 <CompanyLayoutsAlert
                     type="success"
@@ -760,6 +864,7 @@ function CompanyLayoutsPage({
                     }
                 />
             )}
+
 
             <CompanyLayoutsSummary
                 companies={
@@ -772,6 +877,7 @@ function CompanyLayoutsPage({
                     allActivations
                 }
             />
+
 
             <div className="grid gap-6 xl:grid-cols-[330px_minmax(0,1fr)]">
                 <CompanySelectorPanel
@@ -797,10 +903,20 @@ function CompanyLayoutsPage({
                             company
                         );
 
+                        /*
+                        |--------------------------------------------------------------------------
+                        | Normally already loaded during initial page load.
+                        |--------------------------------------------------------------------------
+                        |
+                        | Keep this fallback in case a company is loaded dynamically later.
+                        |
+                        */
+
                         if (
-                            !activationMap[
+                            !Object.prototype.hasOwnProperty.call(
+                                activationMap,
                                 company.id
-                            ]
+                            )
                         ) {
                             loadCompanyActivations(
                                 company.id
@@ -819,6 +935,7 @@ function CompanyLayoutsPage({
                         }
                     }}
                 />
+
 
                 <CompanyLayoutAssignmentsPanel
                     company={
@@ -841,6 +958,7 @@ function CompanyLayoutsPage({
                     }
                 />
             </div>
+
 
             <CompanyLayoutActionModal
                 open={Boolean(
@@ -878,11 +996,12 @@ function CompanyLayoutsPage({
     );
 }
 
-/*
-|--------------------------------------------------------------------------
-| API Error
-|--------------------------------------------------------------------------
-*/
+
+/**
+ * --------------------------------------------------------------------------
+ * API Error
+ * --------------------------------------------------------------------------
+ */
 
 function getApiError(
     error,
@@ -908,5 +1027,6 @@ function getApiError(
         fallback
     );
 }
+
 
 export default CompanyLayoutsPage;

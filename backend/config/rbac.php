@@ -118,6 +118,18 @@ return [
 
         'option_lists.manage',
 
+        /*
+|--------------------------------------------------------------------------
+| Module 3 - Companies
+|--------------------------------------------------------------------------
+*/
+
+'companies.view',
+'companies.create',
+'companies.update',
+'companies.archive',
+'companies.restore',
+
 
 
     ],
@@ -144,10 +156,10 @@ return [
         */
 
         'msp_admin' => [
-            'name' => 'MSP Admin',
+    'name' => 'MSP Admin',
 
-            'permissions' => '*',
-        ],
+    'permissions' => '*',
+],
 
         /*
         |--------------------------------------------------------------------------
