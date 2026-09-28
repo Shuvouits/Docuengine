@@ -168,6 +168,63 @@ class AssetLayoutController extends Controller
         ]);
     }
 
+
+    /**
+|--------------------------------------------------------------------------
+| Activate Asset Layout
+|--------------------------------------------------------------------------
+*/
+
+public function activate(
+    Request $request,
+    string $tenantId,
+    string $layoutId
+): JsonResponse {
+    $actor = $request->user('api');
+
+    if (!$actor) {
+        return response()->json([
+            'message' => 'Unauthenticated.',
+        ], 401);
+    }
+
+    try {
+        $layout = $this->assetLayoutService->activate(
+            tenantId: $tenantId,
+            layoutId: $layoutId,
+            actor: $actor,
+            ipAddress: $request->ip(),
+            userAgent: $request->userAgent(),
+            requestMethod: $request->method(),
+            requestPath: $request->path()
+        );
+    } catch (ModelNotFoundException) {
+        return response()->json([
+            'message' => 'Asset layout not found.',
+        ], 404);
+    } catch (\DomainException $exception) {
+        return response()->json([
+            'message' => $exception->getMessage(),
+        ], 422);
+    }
+
+    $layout->load([
+        'sections',
+        'fields',
+    ]);
+
+    return response()->json([
+        'message' => 'Asset layout activated successfully.',
+        'data' => [
+            'asset_layout' =>
+                $this->formatLayout($layout),
+        ],
+    ]);
+}
+
+
+
+
     /*
     |--------------------------------------------------------------------------
     | Archive Asset Layout

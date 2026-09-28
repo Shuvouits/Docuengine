@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\AuthController;
 
 use App\Http\Controllers\Api\Tenant\AccessReviewController;
 use App\Http\Controllers\Api\Tenant\ArchiveController;
+use App\Http\Controllers\Api\Tenant\AssetController;
 use App\Http\Controllers\Api\Tenant\AssetLayoutActivationController;
 use App\Http\Controllers\Api\Tenant\AssetLayoutBuilderController;
 use App\Http\Controllers\Api\Tenant\AssetLayoutController;
@@ -900,12 +901,9 @@ Route::prefix('tenants/{tenantId}')
             'permission:asset_layouts.manage'
         );
 
-        Route::delete(
-            '/asset-layouts/{layoutId}',
-            [AssetLayoutController::class, 'destroy']
-        )->middleware(
-            'permission:asset_layouts.manage'
-        );
+        Route::post('/asset-layouts/{layoutId}/publish', [AssetLayoutController::class, 'activate'])->middleware('permission:asset_layouts.activate');
+
+        Route::delete('/asset-layouts/{layoutId}',[AssetLayoutController::class, 'destroy'])->middleware('permission:asset_layouts.manage');
 
         Route::post(
             '/asset-layouts/{layoutId}/restore',
@@ -1232,4 +1230,33 @@ Route::middleware([
         Route::get('/', [CompanyContextController::class, 'show']);
 
         Route::patch('/', [CompanyContextController::class, 'update']);
+    });
+
+
+    /*
+|--------------------------------------------------------------------------
+| Module 6 - Asset Management
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('tenants/{tenantId}/assets')
+    ->middleware(['auth:api', 'auth.session', 'tenant.resolve:tenantId'])
+    ->group(function () {
+        Route::get('/', [AssetController::class, 'index'])
+            ->middleware('permission:assets.view');
+
+        Route::post('/', [AssetController::class, 'store'])
+            ->middleware('permission:assets.create');
+
+        Route::get('/{assetId}', [AssetController::class, 'show'])
+            ->middleware('permission:assets.view');
+
+        Route::patch('/{assetId}', [AssetController::class, 'update'])
+            ->middleware('permission:assets.update');
+
+        Route::delete('/{assetId}', [AssetController::class, 'destroy'])
+            ->middleware('permission:assets.archive');
+
+        Route::post('/{assetId}/restore', [AssetController::class, 'restore'])
+            ->middleware('permission:assets.restore');
     });

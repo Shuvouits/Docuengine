@@ -33,14 +33,7 @@ add_shortcode('pool_pilots_google_reviews', function () {
 
 
 
-[
-    'name' => 'Stacey Miller',
-    'count' => '',
-    'time' => 'a day ago',
-    'photo' => 'https://lh3.googleusercontent.com/a/ACg8ocKFijTWYu08znlA0tgxKgsLF1OGNzwIE-qCfDO6tIpNIozqJA=w43-h43-p-rp-mo-br100',
-    'text' => '',
-    'price' => 'Reasonable price'
-],
+
 
 
 
@@ -497,29 +490,9 @@ I left the review a few months ago about the terrible service we were getting on
 
         </div>
 
-        <div class="ppr-controls">
-            <button
-                class="ppr-control ppr-control-prev"
-                type="button"
-                aria-label="Previous review"
-            >
-                ←
-            </button>
-
-            <div class="ppr-dots"></div>
-
-            <button
-                class="ppr-control ppr-control-next"
-                type="button"
-                aria-label="Next review"
-            >
-                →
-            </button>
-        </div>
-
         <a
             class="ppr-google-button"
-            href="https://www.google.com/maps/search/?api=1&query=Google&query_place_id=ChIJOSxJg2QLK4cRcuyTG0mpT_o"
+            href="/reviews"
             target="_blank"
             rel="noopener noreferrer"
         >
@@ -1011,71 +984,7 @@ I left the review a few months ago about the terrible service we were getting on
         .ppr-next {
             right: 0;
         }
-
-        .ppr-controls {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 14px;
-
-            margin: 27px 0 23px;
-        }
-
-        .ppr-control {
-            width: 30px;
-            height: 30px;
-            padding: 0;
-
-            background: transparent;
-            border: 0;
-
-            color: #718096;
-            font-size: 17px;
-
-            cursor: pointer;
-        }
-
-        .ppr-control:hover {
-            color: var(--ppr-blue);
-        }
-
-        .ppr-dots {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-
-            max-width: min(520px, 70vw);
-            overflow: hidden;
-        }
-
-        .ppr-dot {
-            width: 7px;
-            height: 7px;
-            flex: 0 0 7px;
-            padding: 0;
-
-            background: #cbd5df;
-            border: 0;
-            border-radius: 50%;
-
-            cursor: pointer;
-
-            transition:
-                width 0.25s ease,
-                flex-basis 0.25s ease,
-                background 0.25s ease;
-        }
-
-        .ppr-dot.active {
-            width: 23px;
-            flex-basis: 23px;
-
-            background: var(--ppr-blue);
-            border-radius: 10px;
-        }
-
-        .ppr-google-button {
+.ppr-google-button {
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1083,7 +992,7 @@ I left the review a few months ago about the terrible service we were getting on
 
             width: fit-content;
             min-height: 48px;
-            margin: 0 auto;
+            margin: 28px auto 0;
             padding: 13px 22px;
 
             background: var(--ppr-blue);
@@ -1437,23 +1346,12 @@ I left the review a few months ago about the terrible service we were getting on
                             Array.from(
                                 section.querySelectorAll('.ppr-card')
                             );
-
-                        const dotsContainer =
-                            section.querySelector('.ppr-dots');
-
-                        const previousButton =
+const previousButton =
                             section.querySelector('.ppr-prev');
 
                         const nextButton =
                             section.querySelector('.ppr-next');
-
-                        const controlPrevious =
-                            section.querySelector('.ppr-control-prev');
-
-                        const controlNext =
-                            section.querySelector('.ppr-control-next');
-
-                        let currentIndex = 0;
+let currentIndex = 0;
                         let autoplayTimer = null;
                         let resizeTimer = null;
                         let touchStartX = 0;
@@ -1512,53 +1410,7 @@ I left the review a few months ago about the terrible service we were getting on
                                 'translate3d(-' +
                                 offset +
                                 'px, 0, 0)';
-
-                            dotsContainer
-                                .querySelectorAll('.ppr-dot')
-                                .forEach(function (dot, index) {
-                                    dot.classList.toggle(
-                                        'active',
-                                        index === currentIndex
-                                    );
-                                });
-                        }
-
-                        function buildDots() {
-                            dotsContainer.innerHTML = '';
-
-                            const totalDots =
-                                getMaximumIndex() + 1;
-
-                            for (
-                                let index = 0;
-                                index < totalDots;
-                                index++
-                            ) {
-                                const dot =
-                                    document.createElement('button');
-
-                                dot.type = 'button';
-                                dot.className = 'ppr-dot';
-
-                                dot.setAttribute(
-                                    'aria-label',
-                                    'Go to review ' +
-                                    (index + 1)
-                                );
-
-                                dot.addEventListener(
-                                    'click',
-                                    function () {
-                                        currentIndex = index;
-
-                                        updateCarousel();
-                                        restartAutoplay();
-                                    }
-                                );
-
-                                dotsContainer.appendChild(dot);
-                            }
-                        }
+}
 
                         function showNext() {
                             const maximumIndex =
@@ -1631,20 +1483,10 @@ I left the review a few months ago about the terrible service we were getting on
                                 restartAutoplay();
                             }
                         );
-
-                        controlPrevious.addEventListener(
-                            'click',
-                            function () {
-                                showPrevious();
-                                restartAutoplay();
+restartAutoplay();
                             }
                         );
-
-                        controlNext.addEventListener(
-                            'click',
-                            function () {
-                                showNext();
-                                restartAutoplay();
+restartAutoplay();
                             }
                         );
 
@@ -1705,15 +1547,12 @@ I left the review a few months ago about the terrible service we were getting on
                                 resizeTimer =
                                     window.setTimeout(
                                         function () {
-                                            buildDots();
                                             updateCarousel();
                                         },
                                         150
                                     );
                             }
                         );
-
-                        buildDots();
                         updateCarousel();
                         startAutoplay();
                     });
