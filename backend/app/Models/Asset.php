@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -14,51 +15,19 @@ class Asset extends Model
     use HasUuids;
     use SoftDeletes;
 
-    /*
-    |--------------------------------------------------------------------------
-    | Status Constants
-    |--------------------------------------------------------------------------
-    */
-
     public const STATUS_ACTIVE = 'active';
-
     public const STATUS_INACTIVE = 'inactive';
 
-    /*
-    |--------------------------------------------------------------------------
-    | Data Source Constants
-    |--------------------------------------------------------------------------
-    */
-
     public const DATA_SOURCE_MANUAL = 'manual';
-
     public const DATA_SOURCE_INTEGRATION = 'integration';
-
     public const DATA_SOURCE_MIXED = 'mixed';
 
-    /*
-    |--------------------------------------------------------------------------
-    | Lifecycle Constants
-    |--------------------------------------------------------------------------
-    */
-
     public const LIFECYCLE_ACTIVE = 'active';
-
     public const LIFECYCLE_IN_STOCK = 'in_stock';
-
     public const LIFECYCLE_ASSIGNED = 'assigned';
-
     public const LIFECYCLE_MAINTENANCE = 'maintenance';
-
     public const LIFECYCLE_RETIRED = 'retired';
-
     public const LIFECYCLE_DECOMMISSIONED = 'decommissioned';
-
-    /*
-    |--------------------------------------------------------------------------
-    | Fillable Fields
-    |--------------------------------------------------------------------------
-    */
 
     protected $fillable = [
         'tenant_id',
@@ -79,12 +48,6 @@ class Asset extends Model
         'updated_by',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Casts
-    |--------------------------------------------------------------------------
-    */
-
     protected function casts(): array
     {
         return [
@@ -96,11 +59,34 @@ class Asset extends Model
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Relationships
-    |--------------------------------------------------------------------------
-    */
+    public static function statuses(): array
+    {
+        return [
+            self::STATUS_ACTIVE,
+            self::STATUS_INACTIVE,
+        ];
+    }
+
+    public static function dataSources(): array
+    {
+        return [
+            self::DATA_SOURCE_MANUAL,
+            self::DATA_SOURCE_INTEGRATION,
+            self::DATA_SOURCE_MIXED,
+        ];
+    }
+
+    public static function lifecycleStatuses(): array
+    {
+        return [
+            self::LIFECYCLE_ACTIVE,
+            self::LIFECYCLE_IN_STOCK,
+            self::LIFECYCLE_ASSIGNED,
+            self::LIFECYCLE_MAINTENANCE,
+            self::LIFECYCLE_RETIRED,
+            self::LIFECYCLE_DECOMMISSIONED,
+        ];
+    }
 
     public function company(): BelongsTo
     {
@@ -132,6 +118,56 @@ class Asset extends Model
             AssetFieldValue::class,
             'asset_id'
         );
+    }
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            AssetTag::class,
+            'asset_tag_assignments',
+            'asset_id',
+            'asset_tag_id'
+        )
+            ->withPivot([
+                'id',
+                'tenant_id',
+                'created_by',
+            ])
+            ->withTimestamps();
+    }
+
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(
+            AssetAttachment::class,
+            'asset_id'
+        );
+    }
+
+    public function files(): HasMany
+    {
+        return $this
+            ->hasMany(
+                AssetAttachment::class,
+                'asset_id'
+            )
+            ->where(
+                'attachment_type',
+                AssetAttachment::TYPE_FILE
+            );
+    }
+
+    public function photos(): HasMany
+    {
+        return $this
+            ->hasMany(
+                AssetAttachment::class,
+                'asset_id'
+            )
+            ->where(
+                'attachment_type',
+                AssetAttachment::TYPE_PHOTO
+            );
     }
 
     public function owner(): BelongsTo
@@ -166,12 +202,6 @@ class Asset extends Model
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Tenant Scopes
-    |--------------------------------------------------------------------------
-    */
-
     public function scopeForTenant(
         Builder $query,
         string $tenantId
@@ -202,12 +232,6 @@ class Asset extends Model
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Status Scopes
-    |--------------------------------------------------------------------------
-    */
-
     public function scopeActive(
         Builder $query
     ): Builder {
@@ -226,16 +250,56 @@ class Asset extends Model
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Helpers
-    |--------------------------------------------------------------------------
-    */
+    public function scopeOwnedBy(
+        Builder $query,
+        string $userId
+    ): Builder {
+        return $query->where(
+            'owner_user_id',
+            $userId
+        );
+    }
+
+    public function scopeAssignedTo(
+        Builder $query,
+        string $userId
+    ): Builder {
+        return $query->where(
+            'assigned_user_id',
+            $userId
+        );
+    }
+
+    public function scopeFromDataSource(
+        Builder $query,
+        string $dataSource
+    ): Builder {
+        return $query->where(
+            'data_source',
+            $dataSource
+        );
+    }
+
+    public function scopeWithLifecycleStatus(
+        Builder $query,
+        string $lifecycleStatus
+    ): Builder {
+        return $query->where(
+            'lifecycle_status',
+            $lifecycleStatus
+        );
+    }
 
     public function isActive(): bool
     {
         return $this->status ===
             self::STATUS_ACTIVE;
+    }
+
+    public function isInactive(): bool
+    {
+        return $this->status ===
+            self::STATUS_INACTIVE;
     }
 
     public function isManual(): bool
@@ -254,5 +318,34 @@ class Asset extends Model
     {
         return $this->data_source ===
             self::DATA_SOURCE_MIXED;
+    }
+
+    public function hasOwner(): bool
+    {
+        return $this->owner_user_id !== null;
+    }
+
+    public function isAssigned(): bool
+    {
+        return $this->assigned_user_id !== null;
+    }
+
+    public function hasWarranty(): bool
+    {
+        return $this->warranty_expiration_date !== null;
+    }
+
+    public function hasActiveWarranty(): bool
+    {
+        return $this->warranty_expiration_date !== null &&
+            $this->warranty_expiration_date->isTodayOrAfter();
+    }
+
+    public function hasExpiredWarranty(): bool
+    {
+        return $this->warranty_expiration_date !== null &&
+            $this->warranty_expiration_date->isBefore(
+                now()->startOfDay()
+            );
     }
 }

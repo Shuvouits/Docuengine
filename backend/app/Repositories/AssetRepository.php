@@ -5,15 +5,10 @@ namespace App\Repositories;
 use App\Models\Asset;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 
 class AssetRepository
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Base Tenant Query
-    |--------------------------------------------------------------------------
-    */
-
     public function queryForTenant(
         string $tenantId
     ): Builder {
@@ -21,64 +16,450 @@ class AssetRepository
             ->forTenant($tenantId);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Asset List
-    |--------------------------------------------------------------------------
-    */
-
     public function paginateForTenant(
         string $tenantId,
         array $filters = [],
         int $perPage = 20
     ): LengthAwarePaginator {
         $query = $this
-            ->queryForTenant(
-                $tenantId
+            ->queryForTenant($tenantId)
+            ->with(
+                $this->listRelations()
+            );
+
+        $this->applyFilters(
+            $query,
+            $filters
+        );
+
+        $perPage = max(
+            1,
+            min($perPage, 100)
+        );
+
+        return $query->paginate(
+            $perPage
+        );
+    }
+
+    public function findByTenantAndId(
+        string $tenantId,
+        string $assetId
+    ): ?Asset {
+        return $this
+            ->queryForTenant($tenantId)
+            ->with(
+                $this->detailRelations()
             )
-            ->with([
-                'company:id,name',
-                'layout:id,name,slug,current_version',
-                'layoutVersion:id,asset_layout_id,version_number',
-                'owner:id,name,email',
-                'assignedUser:id,name,email',
-            ]);
+            ->where(
+                'id',
+                $assetId
+            )
+            ->first();
+    }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Security Group Company Scope
-        |--------------------------------------------------------------------------
-        */
+    public function findByTenantAndIdWithTrashed(
+        string $tenantId,
+        string $assetId
+    ): ?Asset {
+        return $this
+            ->queryForTenant($tenantId)
+            ->withTrashed()
+            ->with(
+                $this->detailRelations()
+            )
+            ->where(
+                'id',
+                $assetId
+            )
+            ->first();
+    }
 
+    public function findManyByTenantAndIds(
+        string $tenantId,
+        array $assetIds,
+        ?array $companyIds = null,
+        bool $withTrashed = false
+    ): Collection {
+        $assetIds = array_values(
+            array_unique(
+                array_filter($assetIds)
+            )
+        );
+
+        if (empty($assetIds)) {
+            return new Collection();
+        }
+
+        $query = $this
+            ->queryForTenant($tenantId)
+            ->with(
+                $this->listRelations()
+            )
+            ->whereIn(
+                'id',
+                $assetIds
+            );
+
+        if ($withTrashed) {
+            $query->withTrashed();
+        }
+
+        $this->applyCompanyScope(
+            $query,
+            $companyIds
+        );
+
+        return $query->get();
+    }
+
+    public function getForExport(
+        string $tenantId,
+        array $filters = [],
+        int $maxRows = 10000
+    ): Collection {
+        $query = $this
+            ->queryForTenant($tenantId)
+            ->with(
+                $this->detailRelations()
+            );
+
+        $this->applyFilters(
+            $query,
+            $filters
+        );
+
+        $maxRows = max(
+            1,
+            min($maxRows, 10000)
+        );
+
+        return $query
+            ->limit($maxRows)
+            ->get();
+    }
+
+    public function summaryForTenant(
+        string $tenantId,
+        ?array $companyIds = null
+    ): array {
+        $baseQuery = $this
+            ->queryForTenant($tenantId);
+
+        $this->applyCompanyScope(
+            $baseQuery,
+            $companyIds
+        );
+
+        $today = now()
+            ->toDateString();
+
+        return [
+            'total' => (clone $baseQuery)
+                ->count(),
+
+            'active' => (clone $baseQuery)
+                ->where(
+                    'status',
+                    Asset::STATUS_ACTIVE
+                )
+                ->count(),
+
+            'inactive' => (clone $baseQuery)
+                ->where(
+                    'status',
+                    Asset::STATUS_INACTIVE
+                )
+                ->count(),
+
+            'owned' => (clone $baseQuery)
+                ->whereNotNull(
+                    'owner_user_id'
+                )
+                ->count(),
+
+            'unowned' => (clone $baseQuery)
+                ->whereNull(
+                    'owner_user_id'
+                )
+                ->count(),
+
+            'assigned' => (clone $baseQuery)
+                ->whereNotNull(
+                    'assigned_user_id'
+                )
+                ->count(),
+
+            'unassigned' => (clone $baseQuery)
+                ->whereNull(
+                    'assigned_user_id'
+                )
+                ->count(),
+
+            'manual' => (clone $baseQuery)
+                ->where(
+                    'data_source',
+                    Asset::DATA_SOURCE_MANUAL
+                )
+                ->count(),
+
+            'integration' => (clone $baseQuery)
+                ->where(
+                    'data_source',
+                    Asset::DATA_SOURCE_INTEGRATION
+                )
+                ->count(),
+
+            'mixed' => (clone $baseQuery)
+                ->where(
+                    'data_source',
+                    Asset::DATA_SOURCE_MIXED
+                )
+                ->count(),
+
+            'warranty_active' => (clone $baseQuery)
+                ->whereNotNull(
+                    'warranty_expiration_date'
+                )
+                ->whereDate(
+                    'warranty_expiration_date',
+                    '>=',
+                    $today
+                )
+                ->count(),
+
+            'warranty_expired' => (clone $baseQuery)
+                ->whereNotNull(
+                    'warranty_expiration_date'
+                )
+                ->whereDate(
+                    'warranty_expiration_date',
+                    '<',
+                    $today
+                )
+                ->count(),
+
+            'warranty_none' => (clone $baseQuery)
+                ->whereNull(
+                    'warranty_expiration_date'
+                )
+                ->count(),
+
+            'lifecycle' => [
+                Asset::LIFECYCLE_ACTIVE =>
+                    (clone $baseQuery)
+                        ->where(
+                            'lifecycle_status',
+                            Asset::LIFECYCLE_ACTIVE
+                        )
+                        ->count(),
+
+                Asset::LIFECYCLE_IN_STOCK =>
+                    (clone $baseQuery)
+                        ->where(
+                            'lifecycle_status',
+                            Asset::LIFECYCLE_IN_STOCK
+                        )
+                        ->count(),
+
+                Asset::LIFECYCLE_ASSIGNED =>
+                    (clone $baseQuery)
+                        ->where(
+                            'lifecycle_status',
+                            Asset::LIFECYCLE_ASSIGNED
+                        )
+                        ->count(),
+
+                Asset::LIFECYCLE_MAINTENANCE =>
+                    (clone $baseQuery)
+                        ->where(
+                            'lifecycle_status',
+                            Asset::LIFECYCLE_MAINTENANCE
+                        )
+                        ->count(),
+
+                Asset::LIFECYCLE_RETIRED =>
+                    (clone $baseQuery)
+                        ->where(
+                            'lifecycle_status',
+                            Asset::LIFECYCLE_RETIRED
+                        )
+                        ->count(),
+
+                Asset::LIFECYCLE_DECOMMISSIONED =>
+                    (clone $baseQuery)
+                        ->where(
+                            'lifecycle_status',
+                            Asset::LIFECYCLE_DECOMMISSIONED
+                        )
+                        ->count(),
+            ],
+        ];
+    }
+
+    public function countByCompany(
+        string $tenantId,
+        ?array $companyIds = null
+    ): array {
+        $query = $this
+            ->queryForTenant($tenantId);
+
+        $this->applyCompanyScope(
+            $query,
+            $companyIds
+        );
+
+        return $query
+            ->select('company_id')
+            ->selectRaw(
+                'COUNT(*) as total'
+            )
+            ->groupBy('company_id')
+            ->get()
+            ->mapWithKeys(
+                fn (Asset $asset) => [
+                    (string) $asset->company_id =>
+                        (int) $asset->total,
+                ]
+            )
+            ->all();
+    }
+
+    public function countByLayout(
+        string $tenantId,
+        ?array $companyIds = null
+    ): array {
+        $query = $this
+            ->queryForTenant($tenantId);
+
+        $this->applyCompanyScope(
+            $query,
+            $companyIds
+        );
+
+        return $query
+            ->select('asset_layout_id')
+            ->selectRaw(
+                'COUNT(*) as total'
+            )
+            ->groupBy('asset_layout_id')
+            ->get()
+            ->mapWithKeys(
+                fn (Asset $asset) => [
+                    (string) $asset->asset_layout_id =>
+                        (int) $asset->total,
+                ]
+            )
+            ->all();
+    }
+
+    public function recentCreated(
+        string $tenantId,
+        ?array $companyIds = null,
+        int $limit = 10
+    ): Collection {
+        $query = $this
+            ->queryForTenant($tenantId)
+            ->with(
+                $this->listRelations()
+            );
+
+        $this->applyCompanyScope(
+            $query,
+            $companyIds
+        );
+
+        $limit = max(
+            1,
+            min($limit, 50)
+        );
+
+        return $query
+            ->latest('created_at')
+            ->limit($limit)
+            ->get();
+    }
+
+    public function recentUpdated(
+        string $tenantId,
+        ?array $companyIds = null,
+        int $limit = 10
+    ): Collection {
+        $query = $this
+            ->queryForTenant($tenantId)
+            ->with(
+                $this->listRelations()
+            );
+
+        $this->applyCompanyScope(
+            $query,
+            $companyIds
+        );
+
+        $limit = max(
+            1,
+            min($limit, 50)
+        );
+
+        return $query
+            ->latest('updated_at')
+            ->limit($limit)
+            ->get();
+    }
+
+    public function create(
+        array $data
+    ): Asset {
+        return Asset::query()
+            ->create($data);
+    }
+
+    public function update(
+        Asset $asset,
+        array $data
+    ): Asset {
+        $asset->fill($data);
+
+        $asset->updated_at = now();
+
+        $asset->save();
+
+        return $asset->refresh();
+    }
+
+    public function archive(
+        Asset $asset
+    ): bool {
+        return (bool) $asset->delete();
+    }
+
+    public function restore(
+        Asset $asset
+    ): bool {
+        return (bool) $asset->restore();
+    }
+
+    private function applyFilters(
+        Builder $query,
+        array $filters
+    ): void {
         if (
             array_key_exists(
                 'company_ids',
                 $filters
             )
         ) {
-            $companyIds =
-                $filters['company_ids'];
+            $companyIds = is_array(
+                $filters['company_ids']
+            )
+                ? $filters['company_ids']
+                : [];
 
-            if (
-                !is_array($companyIds) ||
-                empty($companyIds)
-            ) {
-                $query->whereRaw(
-                    '1 = 0'
-                );
-            } else {
-                $query->whereIn(
-                    'company_id',
-                    $companyIds
-                );
-            }
+            $this->applyCompanyScope(
+                $query,
+                $companyIds
+            );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Archived Assets
-        |--------------------------------------------------------------------------
-        */
 
         if (
             filter_var(
@@ -89,15 +470,10 @@ class AssetRepository
             $query->onlyTrashed();
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Search
-        |--------------------------------------------------------------------------
-        */
-
         $search = trim(
             (string) (
-                $filters['search'] ?? ''
+                $filters['search']
+                ?? ''
             )
         );
 
@@ -116,144 +492,116 @@ class AssetRepository
                             'notes',
                             'like',
                             "%{$search}%"
+                        )
+                        ->orWhereHas(
+                            'fieldValues',
+                            function (
+                                Builder $fieldQuery
+                            ) use ($search) {
+                                $fieldQuery->where(
+                                    'value_text',
+                                    'like',
+                                    "%{$search}%"
+                                );
+                            }
+                        )
+                        ->orWhereHas(
+                            'tags',
+                            function (
+                                Builder $tagQuery
+                            ) use ($search) {
+                                $tagQuery->where(
+                                    'name',
+                                    'like',
+                                    "%{$search}%"
+                                );
+                            }
                         );
                 }
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Company Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $companyId =
-            $filters['company_id'] ??
-            null;
-
-        if ($companyId) {
+        if (!empty($filters['company_id'])) {
             $query->where(
                 'company_id',
-                $companyId
+                $filters['company_id']
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Asset Layout Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $layoutId =
-            $filters['asset_layout_id'] ??
-            null;
-
-        if ($layoutId) {
+        if (!empty($filters['asset_layout_id'])) {
             $query->where(
                 'asset_layout_id',
-                $layoutId
+                $filters['asset_layout_id']
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Status Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $status =
-            $filters['status'] ??
-            null;
-
-        if ($status) {
+        if (!empty($filters['status'])) {
             $query->where(
                 'status',
-                $status
+                $filters['status']
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Owner Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $ownerUserId =
-            $filters['owner_user_id'] ??
-            null;
-
-        if ($ownerUserId) {
+        if (!empty($filters['owner_user_id'])) {
             $query->where(
                 'owner_user_id',
-                $ownerUserId
+                $filters['owner_user_id']
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Assigned User Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $assignedUserId =
-            $filters['assigned_user_id'] ??
-            null;
-
-        if ($assignedUserId) {
+        if (!empty($filters['assigned_user_id'])) {
             $query->where(
                 'assigned_user_id',
-                $assignedUserId
+                $filters['assigned_user_id']
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Data Source Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $dataSource =
-            $filters['data_source'] ??
-            null;
-
-        if ($dataSource) {
+        if (!empty($filters['data_source'])) {
             $query->where(
                 'data_source',
-                $dataSource
+                $filters['data_source']
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Lifecycle Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $lifecycleStatus =
-            $filters['lifecycle_status'] ??
-            null;
-
-        if ($lifecycleStatus) {
+        if (!empty($filters['lifecycle_status'])) {
             $query->where(
                 'lifecycle_status',
-                $lifecycleStatus
+                $filters['lifecycle_status']
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Warranty Filter
-        |--------------------------------------------------------------------------
-        */
-
-        $warrantyStatus =
-            $filters['warranty_status'] ??
-            null;
+        $tagIds =
+            $filters['tag_ids']
+            ?? [];
 
         if (
-            $warrantyStatus ===
-            'expired'
+            is_array($tagIds) &&
+            !empty($tagIds)
         ) {
+            $tagIds = array_values(
+                array_unique(
+                    array_filter($tagIds)
+                )
+            );
+
+            $query->whereHas(
+                'tags',
+                function (
+                    Builder $tagQuery
+                ) use ($tagIds) {
+                    $tagQuery->whereIn(
+                        'asset_tags.id',
+                        $tagIds
+                    );
+                }
+            );
+        }
+
+        $warrantyStatus =
+            $filters['warranty_status']
+            ?? null;
+
+        if ($warrantyStatus === 'expired') {
             $query
                 ->whereNotNull(
                     'warranty_expiration_date'
@@ -265,10 +613,7 @@ class AssetRepository
                 );
         }
 
-        if (
-            $warrantyStatus ===
-            'active'
-        ) {
+        if ($warrantyStatus === 'active') {
             $query
                 ->whereNotNull(
                     'warranty_expiration_date'
@@ -280,20 +625,11 @@ class AssetRepository
                 );
         }
 
-        if (
-            $warrantyStatus ===
-            'none'
-        ) {
+        if ($warrantyStatus === 'none') {
             $query->whereNull(
                 'warranty_expiration_date'
             );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Sorting
-        |--------------------------------------------------------------------------
-        */
 
         $allowedSorts = [
             'name',
@@ -306,8 +642,8 @@ class AssetRepository
         ];
 
         $sortBy =
-            $filters['sort_by'] ??
-            'updated_at';
+            $filters['sort_by']
+            ?? 'updated_at';
 
         if (
             !in_array(
@@ -316,17 +652,15 @@ class AssetRepository
                 true
             )
         ) {
-            $sortBy =
-                'updated_at';
+            $sortBy = 'updated_at';
         }
 
-        $sortDirection =
-            strtolower(
-                (string) (
-                    $filters['sort_direction'] ??
-                    'desc'
-                )
-            );
+        $sortDirection = strtolower(
+            (string) (
+                $filters['sort_direction']
+                ?? 'desc'
+            )
+        );
 
         if (
             !in_array(
@@ -338,139 +672,67 @@ class AssetRepository
                 true
             )
         ) {
-            $sortDirection =
-                'desc';
+            $sortDirection = 'desc';
         }
 
-        return $query
-            ->orderBy(
-                $sortBy,
-                $sortDirection
-            )
-            ->paginate(
-                $perPage
-            );
+        $query->orderBy(
+            $sortBy,
+            $sortDirection
+        );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Find Asset
-    |--------------------------------------------------------------------------
-    */
+    private function applyCompanyScope(
+        Builder $query,
+        ?array $companyIds
+    ): void {
+        if ($companyIds === null) {
+            return;
+        }
 
-    public function findByTenantAndId(
-        string $tenantId,
-        string $assetId
-    ): ?Asset {
-        return $this
-            ->queryForTenant(
-                $tenantId
+        $companyIds = array_values(
+            array_unique(
+                array_filter($companyIds)
             )
-            ->with([
-                'company:id,name',
-                'layout',
-                'layoutVersion',
-                'fieldValues.layoutField',
-                'owner:id,name,email',
-                'assignedUser:id,name,email',
-                'creator:id,name,email',
-                'updater:id,name,email',
-            ])
-            ->where(
-                'id',
-                $assetId
-            )
-            ->first();
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Find Asset With Trashed
-    |--------------------------------------------------------------------------
-    */
-
-    public function findByTenantAndIdWithTrashed(
-        string $tenantId,
-        string $assetId
-    ): ?Asset {
-        return $this
-            ->queryForTenant(
-                $tenantId
-            )
-            ->withTrashed()
-            ->with([
-                'company:id,name',
-                'layout',
-                'layoutVersion',
-                'fieldValues.layoutField',
-                'owner:id,name,email',
-                'assignedUser:id,name,email',
-            ])
-            ->where(
-                'id',
-                $assetId
-            )
-            ->first();
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Create Asset
-    |--------------------------------------------------------------------------
-    */
-
-    public function create(
-        array $data
-    ): Asset {
-        return Asset::query()
-            ->create(
-                $data
-            );
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Update Asset
-    |--------------------------------------------------------------------------
-    */
-
-    public function update(
-        Asset $asset,
-        array $data
-    ): Asset {
-        $asset->fill(
-            $data
         );
 
-        $asset->save();
+        if (empty($companyIds)) {
+            $query->whereRaw(
+                '1 = 0'
+            );
 
-        return $asset
-            ->refresh();
+            return;
+        }
+
+        $query->whereIn(
+            'company_id',
+            $companyIds
+        );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Archive Asset
-    |--------------------------------------------------------------------------
-    */
-
-    public function archive(
-        Asset $asset
-    ): bool {
-        return (bool)
-            $asset->delete();
+    private function listRelations(): array
+    {
+        return [
+            'company:id,name',
+            'layout:id,name,slug,current_version',
+            'layoutVersion:id,asset_layout_id,version_number',
+            'owner:id,name,email',
+            'assignedUser:id,name,email',
+            'tags:id,name,slug',
+        ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Restore Asset
-    |--------------------------------------------------------------------------
-    */
-
-    public function restore(
-        Asset $asset
-    ): bool {
-        return (bool)
-            $asset->restore();
+    private function detailRelations(): array
+    {
+        return [
+            'company:id,name',
+            'layout',
+            'layoutVersion',
+            'fieldValues.layoutField',
+            'owner:id,name,email',
+            'assignedUser:id,name,email',
+            'creator:id,name,email',
+            'updater:id,name,email',
+            'tags:id,name,slug',
+        ];
     }
 }

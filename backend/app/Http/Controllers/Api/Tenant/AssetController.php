@@ -18,12 +18,6 @@ class AssetController extends Controller
     ) {
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Asset List
-    |--------------------------------------------------------------------------
-    */
-
     public function index(
         Request $request,
         string $tenantId
@@ -47,10 +41,9 @@ class AssetController extends Controller
 
             'status' => [
                 'nullable',
-                Rule::in([
-                    Asset::STATUS_ACTIVE,
-                    Asset::STATUS_INACTIVE,
-                ]),
+                Rule::in(
+                    Asset::statuses()
+                ),
             ],
 
             'owner_user_id' => [
@@ -63,25 +56,29 @@ class AssetController extends Controller
                 'uuid',
             ],
 
+            'tag_ids' => [
+                'nullable',
+                'array',
+                'max:50',
+            ],
+
+            'tag_ids.*' => [
+                'uuid',
+                'distinct',
+            ],
+
             'data_source' => [
                 'nullable',
-                Rule::in([
-                    Asset::DATA_SOURCE_MANUAL,
-                    Asset::DATA_SOURCE_INTEGRATION,
-                    Asset::DATA_SOURCE_MIXED,
-                ]),
+                Rule::in(
+                    Asset::dataSources()
+                ),
             ],
 
             'lifecycle_status' => [
                 'nullable',
-                Rule::in([
-                    Asset::LIFECYCLE_ACTIVE,
-                    Asset::LIFECYCLE_IN_STOCK,
-                    Asset::LIFECYCLE_ASSIGNED,
-                    Asset::LIFECYCLE_MAINTENANCE,
-                    Asset::LIFECYCLE_RETIRED,
-                    Asset::LIFECYCLE_DECOMMISSIONED,
-                ]),
+                Rule::in(
+                    Asset::lifecycleStatuses()
+                ),
             ],
 
             'warranty_status' => [
@@ -175,12 +172,6 @@ class AssetController extends Controller
         ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Asset Details
-    |--------------------------------------------------------------------------
-    */
-
     public function show(
         Request $request,
         string $tenantId,
@@ -215,12 +206,6 @@ class AssetController extends Controller
         ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Create Asset
-    |--------------------------------------------------------------------------
-    */
-
     public function store(
         Request $request,
         string $tenantId
@@ -244,22 +229,44 @@ class AssetController extends Controller
 
             'status' => [
                 'nullable',
-                Rule::in([
-                    Asset::STATUS_ACTIVE,
-                    Asset::STATUS_INACTIVE,
-                ]),
+                Rule::in(
+                    Asset::statuses()
+                ),
+            ],
+
+            'owner_user_id' => [
+                'nullable',
+                'uuid',
+            ],
+
+            'assigned_user_id' => [
+                'nullable',
+                'uuid',
+            ],
+
+            'tag_ids' => [
+                'nullable',
+                'array',
+                'max:50',
+            ],
+
+            'tag_ids.*' => [
+                'uuid',
+                'distinct',
+            ],
+
+            'data_source' => [
+                'nullable',
+                Rule::in(
+                    Asset::dataSources()
+                ),
             ],
 
             'lifecycle_status' => [
                 'nullable',
-                Rule::in([
-                    Asset::LIFECYCLE_ACTIVE,
-                    Asset::LIFECYCLE_IN_STOCK,
-                    Asset::LIFECYCLE_ASSIGNED,
-                    Asset::LIFECYCLE_MAINTENANCE,
-                    Asset::LIFECYCLE_RETIRED,
-                    Asset::LIFECYCLE_DECOMMISSIONED,
-                ]),
+                Rule::in(
+                    Asset::lifecycleStatuses()
+                ),
             ],
 
             'warranty_provider' => [
@@ -296,7 +303,11 @@ class AssetController extends Controller
                 ->create(
                     tenantId: $tenantId,
                     data: $validated,
-                    actor: $request->user('api')
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -319,12 +330,6 @@ class AssetController extends Controller
         ], 201);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Update Asset
-    |--------------------------------------------------------------------------
-    */
-
     public function update(
         Request $request,
         string $tenantId,
@@ -337,11 +342,6 @@ class AssetController extends Controller
                 'string',
                 'max:200',
             ],
-
-            /*
-             * Accepted only so AssetService can enforce
-             * that company/layout cannot be changed.
-             */
 
             'company_id' => [
                 'sometimes',
@@ -358,23 +358,48 @@ class AssetController extends Controller
             'status' => [
                 'sometimes',
                 'required',
-                Rule::in([
-                    Asset::STATUS_ACTIVE,
-                    Asset::STATUS_INACTIVE,
-                ]),
+                Rule::in(
+                    Asset::statuses()
+                ),
+            ],
+
+            'owner_user_id' => [
+                'sometimes',
+                'nullable',
+                'uuid',
+            ],
+
+            'assigned_user_id' => [
+                'sometimes',
+                'nullable',
+                'uuid',
+            ],
+
+            'tag_ids' => [
+                'sometimes',
+                'array',
+                'max:50',
+            ],
+
+            'tag_ids.*' => [
+                'uuid',
+                'distinct',
+            ],
+
+            'data_source' => [
+                'sometimes',
+                'required',
+                Rule::in(
+                    Asset::dataSources()
+                ),
             ],
 
             'lifecycle_status' => [
                 'sometimes',
                 'required',
-                Rule::in([
-                    Asset::LIFECYCLE_ACTIVE,
-                    Asset::LIFECYCLE_IN_STOCK,
-                    Asset::LIFECYCLE_ASSIGNED,
-                    Asset::LIFECYCLE_MAINTENANCE,
-                    Asset::LIFECYCLE_RETIRED,
-                    Asset::LIFECYCLE_DECOMMISSIONED,
-                ]),
+                Rule::in(
+                    Asset::lifecycleStatuses()
+                ),
             ],
 
             'warranty_provider' => [
@@ -416,7 +441,11 @@ class AssetController extends Controller
                     tenantId: $tenantId,
                     assetId: $assetId,
                     data: $validated,
-                    actor: $request->user('api')
+                    actor: $request->user('api'),
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -438,12 +467,6 @@ class AssetController extends Controller
             ],
         ]);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Archive Asset
-    |--------------------------------------------------------------------------
-    */
 
     public function destroy(
         Request $request,
@@ -468,14 +491,10 @@ class AssetController extends Controller
                     reason:
                         $validated['reason']
                         ?? null,
-                    ipAddress:
-                        $request->ip(),
-                    userAgent:
-                        $request->userAgent(),
-                    requestMethod:
-                        $request->method(),
-                    requestPath:
-                        $request->path()
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -490,12 +509,6 @@ class AssetController extends Controller
         ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Restore Asset
-    |--------------------------------------------------------------------------
-    */
-
     public function restore(
         Request $request,
         string $tenantId,
@@ -508,14 +521,10 @@ class AssetController extends Controller
                     tenantId: $tenantId,
                     assetId: $assetId,
                     actor: $request->user('api'),
-                    ipAddress:
-                        $request->ip(),
-                    userAgent:
-                        $request->userAgent(),
-                    requestMethod:
-                        $request->method(),
-                    requestPath:
-                        $request->path()
+                    ipAddress: $request->ip(),
+                    userAgent: $request->userAgent(),
+                    requestMethod: $request->method(),
+                    requestPath: $request->path()
                 );
         } catch (DomainException $exception) {
             return response()->json([
@@ -537,12 +546,6 @@ class AssetController extends Controller
             ],
         ]);
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Format Asset
-    |--------------------------------------------------------------------------
-    */
 
     private function formatAsset(
         Asset $asset,
@@ -645,7 +648,9 @@ class AssetController extends Controller
                             $asset->layout->slug,
 
                         'current_version' =>
-                            $asset->layout->current_version,
+                            $asset
+                                ->layout
+                                ->current_version,
                     ]
                     : null,
 
@@ -654,7 +659,9 @@ class AssetController extends Controller
                 $asset->layoutVersion
                     ? [
                         'id' =>
-                            $asset->layoutVersion->id,
+                            $asset
+                                ->layoutVersion
+                                ->id,
 
                         'version_number' =>
                             $asset
@@ -683,15 +690,40 @@ class AssetController extends Controller
                 $asset->assignedUser
                     ? [
                         'id' =>
-                            $asset->assignedUser->id,
+                            $asset
+                                ->assignedUser
+                                ->id,
 
                         'name' =>
-                            $asset->assignedUser->name,
+                            $asset
+                                ->assignedUser
+                                ->name,
 
                         'email' =>
-                            $asset->assignedUser->email,
+                            $asset
+                                ->assignedUser
+                                ->email,
                     ]
                     : null,
+
+            'tags' =>
+                $asset->relationLoaded('tags')
+                    ? $asset
+                        ->tags
+                        ->map(
+                            fn ($tag) => [
+                                'id' =>
+                                    $tag->id,
+
+                                'name' =>
+                                    $tag->name,
+
+                                'slug' =>
+                                    $tag->slug,
+                            ]
+                        )
+                        ->values()
+                    : [],
         ];
 
         if ($includeFields) {
@@ -712,12 +744,6 @@ class AssetController extends Controller
         return $data;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Format Dynamic Field Value
-    |--------------------------------------------------------------------------
-    */
-
     private function formatFieldValue(
         AssetFieldValue $fieldValue
     ): array {
@@ -736,9 +762,7 @@ class AssetController extends Controller
                 $fieldValue->field_type,
 
             'value' =>
-                $this->resolveFieldValue(
-                    $fieldValue
-                ),
+                $fieldValue->resolvedValue(),
 
             'data_source' =>
                 $fieldValue->data_source,
@@ -806,38 +830,5 @@ class AssetController extends Controller
                     ->updated_at
                     ?->toISOString(),
         ];
-    }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Resolve Dynamic Field Value
-    |--------------------------------------------------------------------------
-    */
-
-    private function resolveFieldValue(
-        AssetFieldValue $fieldValue
-    ): mixed {
-        return match (
-            $fieldValue->field_type
-        ) {
-            'number' =>
-                $fieldValue->value_number,
-
-            'date' =>
-                $fieldValue
-                    ->value_datetime
-                    ?->format('Y-m-d'),
-
-            'checkbox' =>
-                $fieldValue->value_boolean,
-
-            'multi_select',
-            'file',
-            'relationship' =>
-                $fieldValue->value_json,
-
-            default =>
-                $fieldValue->value_text,
-        };
     }
 }

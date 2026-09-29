@@ -2,7 +2,9 @@
 
 namespace App\Services\Company;
 
+use App\Models\Asset;
 use App\Models\User;
+use App\Repositories\AssetRepository;
 use App\Repositories\CompanyRepository;
 use DomainException;
 
@@ -10,7 +12,8 @@ class CompanyWorkspaceService
 {
     public function __construct(
         protected CompanyRepository $companyRepository,
-        protected CompanyAccessService $companyAccessService
+        protected CompanyAccessService $companyAccessService,
+        protected AssetRepository $assetRepository
     ) {
     }
 
@@ -37,11 +40,11 @@ class CompanyWorkspaceService
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Company Access
-        |--------------------------------------------------------------------------
-        */
+        /**
+         * --------------------------------------------------------------------------
+         * Company Access
+         * --------------------------------------------------------------------------
+         */
 
         $this
             ->companyAccessService
@@ -51,12 +54,52 @@ class CompanyWorkspaceService
                 $companyId
             );
 
+        /**
+         * --------------------------------------------------------------------------
+         * Asset Workspace Data
+         * --------------------------------------------------------------------------
+         */
+
+        $companyScope = [
+            $companyId,
+        ];
+
+        $assetSummary = $this
+            ->assetRepository
+            ->summaryForTenant(
+                $tenantId,
+                $companyScope
+            );
+
+        $assetCountsByLayout = $this
+            ->assetRepository
+            ->countByLayout(
+                $tenantId,
+                $companyScope
+            );
+
+        $recentCreatedAssets = $this
+            ->assetRepository
+            ->recentCreated(
+                $tenantId,
+                $companyScope,
+                5
+            );
+
+        $recentUpdatedAssets = $this
+            ->assetRepository
+            ->recentUpdated(
+                $tenantId,
+                $companyScope,
+                5
+            );
+
         return [
-            /*
-            |--------------------------------------------------------------------------
-            | Workspace Context
-            |--------------------------------------------------------------------------
-            */
+            /**
+             * --------------------------------------------------------------------------
+             * Workspace Context
+             * --------------------------------------------------------------------------
+             */
 
             'context' => [
                 'tenant_id' =>
@@ -81,11 +124,11 @@ class CompanyWorkspaceService
                     $company->id,
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Company Profile
-            |--------------------------------------------------------------------------
-            */
+            /**
+             * --------------------------------------------------------------------------
+             * Company Profile
+             * --------------------------------------------------------------------------
+             */
 
             'company' => [
                 'id' =>
@@ -113,11 +156,11 @@ class CompanyWorkspaceService
                     $company->notes,
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Primary Contact
-            |--------------------------------------------------------------------------
-            */
+            /**
+             * --------------------------------------------------------------------------
+             * Primary Contact
+             * --------------------------------------------------------------------------
+             */
 
             'contact' => [
                 'name' =>
@@ -130,11 +173,11 @@ class CompanyWorkspaceService
                     $company->primary_contact_phone,
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Location
-            |--------------------------------------------------------------------------
-            */
+            /**
+             * --------------------------------------------------------------------------
+             * Location
+             * --------------------------------------------------------------------------
+             */
 
             'location' => [
                 'address_line1' =>
@@ -156,11 +199,11 @@ class CompanyWorkspaceService
                     $company->country,
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Current Resource Counters
-            |--------------------------------------------------------------------------
-            */
+            /**
+             * --------------------------------------------------------------------------
+             * Current Resource Counters
+             * --------------------------------------------------------------------------
+             */
 
             'resources' => [
                 'asset_layouts' => [
@@ -177,13 +220,13 @@ class CompanyWorkspaceService
 
                 'assets' => [
                     'count' =>
-                        null,
+                        (int) (
+                            $assetSummary['total']
+                            ?? 0
+                        ),
 
                     'available' =>
-                        false,
-
-                    'planned_module' =>
-                        6,
+                        true,
                 ],
 
                 'documents' => [
@@ -198,11 +241,47 @@ class CompanyWorkspaceService
                 ],
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Company Navigation Context
-            |--------------------------------------------------------------------------
-            */
+            /**
+             * --------------------------------------------------------------------------
+             * Asset Summary
+             * --------------------------------------------------------------------------
+             */
+
+            'assets' => [
+                'summary' =>
+                    $assetSummary,
+
+                'counts_by_layout' =>
+                    $assetCountsByLayout,
+
+                'recently_created' =>
+                    $recentCreatedAssets
+                        ->map(
+                            fn (Asset $asset) =>
+                                $this->formatAsset(
+                                    $asset
+                                )
+                        )
+                        ->values()
+                        ->all(),
+
+                'recently_updated' =>
+                    $recentUpdatedAssets
+                        ->map(
+                            fn (Asset $asset) =>
+                                $this->formatAsset(
+                                    $asset
+                                )
+                        )
+                        ->values()
+                        ->all(),
+            ],
+
+            /**
+             * --------------------------------------------------------------------------
+             * Company Navigation Context
+             * --------------------------------------------------------------------------
+             */
 
             'navigation' => [
                 'overview' =>
@@ -221,17 +300,17 @@ class CompanyWorkspaceService
                     true,
 
                 'assets' =>
-                    false,
+                    true,
 
                 'documentation' =>
                     false,
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Lifecycle
-            |--------------------------------------------------------------------------
-            */
+            /**
+             * --------------------------------------------------------------------------
+             * Lifecycle
+             * --------------------------------------------------------------------------
+             */
 
             'lifecycle' => [
                 'created_at' =>
@@ -252,6 +331,90 @@ class CompanyWorkspaceService
                 'archived_by' =>
                     $company->archived_by,
             ],
+        ];
+    }
+
+    private function formatAsset(
+        Asset $asset
+    ): array {
+        return [
+            'id' =>
+                $asset->id,
+
+            'company_id' =>
+                $asset->company_id,
+
+            'asset_layout_id' =>
+                $asset->asset_layout_id,
+
+            'asset_layout_version_id' =>
+                $asset->asset_layout_version_id,
+
+            'name' =>
+                $asset->name,
+
+            'status' =>
+                $asset->status,
+
+            'data_source' =>
+                $asset->data_source,
+
+            'lifecycle_status' =>
+                $asset->lifecycle_status,
+
+            'warranty_expiration_date' =>
+                $asset->warranty_expiration_date,
+
+            'layout' =>
+                $asset->layout
+                    ? [
+                        'id' =>
+                            $asset->layout->id,
+
+                        'name' =>
+                            $asset->layout->name,
+
+                        'slug' =>
+                            $asset->layout->slug,
+
+                        'current_version' =>
+                            $asset->layout->current_version,
+                    ]
+                    : null,
+
+            'owner' =>
+                $asset->owner
+                    ? [
+                        'id' =>
+                            $asset->owner->id,
+
+                        'name' =>
+                            $asset->owner->name,
+
+                        'email' =>
+                            $asset->owner->email,
+                    ]
+                    : null,
+
+            'assigned_user' =>
+                $asset->assignedUser
+                    ? [
+                        'id' =>
+                            $asset->assignedUser->id,
+
+                        'name' =>
+                            $asset->assignedUser->name,
+
+                        'email' =>
+                            $asset->assignedUser->email,
+                    ]
+                    : null,
+
+            'created_at' =>
+                $asset->created_at,
+
+            'updated_at' =>
+                $asset->updated_at,
         ];
     }
 }

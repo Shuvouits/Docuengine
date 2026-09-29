@@ -3,6 +3,7 @@
 namespace App\Services\Asset;
 
 use App\Models\Asset;
+use App\Models\AuditEvent;
 use App\Models\User;
 use App\Repositories\AssetLayoutActivationRepository;
 use App\Repositories\AssetLayoutFieldRepository;
@@ -10,6 +11,7 @@ use App\Repositories\AssetLayoutRepository;
 use App\Repositories\AssetLayoutVersionRepository;
 use App\Repositories\AssetRepository;
 use App\Repositories\CompanyRepository;
+use App\Repositories\TenantUserRepository;
 use App\Services\Archive\ArchiveService;
 use App\Services\Audit\AuditEventService;
 use App\Services\Company\CompanyAccessService;
@@ -17,7 +19,6 @@ use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use App\Models\AuditEvent;
 
 class AssetService
 {
@@ -28,18 +29,14 @@ class AssetService
         private readonly AssetLayoutActivationRepository $assetLayoutActivationRepository,
         private readonly AssetLayoutVersionRepository $assetLayoutVersionRepository,
         private readonly AssetLayoutFieldRepository $assetLayoutFieldRepository,
+        private readonly TenantUserRepository $tenantUserRepository,
         private readonly AssetFieldValueService $assetFieldValueService,
+        private readonly AssetTagService $assetTagService,
         private readonly CompanyAccessService $companyAccessService,
         private readonly ArchiveService $archiveService,
         private readonly AuditEventService $auditEventService
     ) {
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Asset List
-    |--------------------------------------------------------------------------
-    */
 
     public function getAll(
         string $tenantId,
@@ -59,15 +56,13 @@ class AssetService
         }
 
         $perPage = (int) (
-            $filters['per_page'] ?? 20
+            $filters['per_page']
+            ?? 20
         );
 
         $perPage = max(
             1,
-            min(
-                $perPage,
-                100
-            )
+            min($perPage, 100)
         );
 
         return $this
@@ -78,12 +73,6 @@ class AssetService
                 $perPage
             );
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Asset Details
-    |--------------------------------------------------------------------------
-    */
 
     public function getById(
         string $tenantId,
@@ -114,24 +103,19 @@ class AssetService
         return $asset;
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Create Asset
-    |--------------------------------------------------------------------------
-    */
-
     public function create(
         string $tenantId,
-    array $data,
-    User $actor,
-    ?string $ipAddress = null,
-    ?string $userAgent = null,
-    ?string $requestMethod = null,
-    ?string $requestPath = null
+        array $data,
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): Asset {
         $name = trim(
             (string) (
-                $data['name'] ?? ''
+                $data['name']
+                ?? ''
             )
         );
 
@@ -143,15 +127,10 @@ class AssetService
             ]);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Validate Company
-        |--------------------------------------------------------------------------
-        */
-
         $companyId = trim(
             (string) (
-                $data['company_id'] ?? ''
+                $data['company_id']
+                ?? ''
             )
         );
 
@@ -186,15 +165,10 @@ class AssetService
                 $companyId
             );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Validate Asset Layout
-        |--------------------------------------------------------------------------
-        */
-
         $layoutId = trim(
             (string) (
-                $data['asset_layout_id'] ?? ''
+                $data['asset_layout_id']
+                ?? ''
             )
         );
 
@@ -229,12 +203,6 @@ class AssetService
             ]);
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Validate Layout Assignment
-        |--------------------------------------------------------------------------
-        */
-
         $activation = $this
             ->assetLayoutActivationRepository
             ->findByLayoutAndCompany(
@@ -253,12 +221,6 @@ class AssetService
                 ],
             ]);
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Resolve Layout Version
-        |--------------------------------------------------------------------------
-        */
 
         $currentVersionNumber =
             (int) $layout->current_version;
@@ -283,12 +245,6 @@ class AssetService
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Status
-        |--------------------------------------------------------------------------
-        */
-
         $status =
             $data['status']
             ?? Asset::STATUS_ACTIVE;
@@ -296,12 +252,6 @@ class AssetService
         $this->validateStatus(
             $status
         );
-
-        /*
-        |--------------------------------------------------------------------------
-        | Lifecycle
-        |--------------------------------------------------------------------------
-        */
 
         $lifecycleStatus =
             $data['lifecycle_status']
@@ -311,11 +261,29 @@ class AssetService
             $lifecycleStatus
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Dynamic Fields
-        |--------------------------------------------------------------------------
-        */
+        $ownerUserId = $this
+            ->validateTenantUser(
+                $tenantId,
+                $data['owner_user_id']
+                    ?? null,
+                'owner_user_id'
+            );
+
+        $assignedUserId = $this
+            ->validateTenantUser(
+                $tenantId,
+                $data['assigned_user_id']
+                    ?? null,
+                'assigned_user_id'
+            );
+
+        $dataSource =
+            $data['data_source']
+            ?? Asset::DATA_SOURCE_MANUAL;
+
+        $this->validateDataSource(
+            $dataSource
+        );
 
         $fieldValues =
             $data['fields']
@@ -336,22 +304,26 @@ class AssetService
                 $layoutId
             );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Warranty
-        |--------------------------------------------------------------------------
-        */
-
         $this->validateWarrantyDates(
-            $data['warranty_start_date'] ?? null,
-            $data['warranty_expiration_date'] ?? null
+            $data['warranty_start_date']
+                ?? null,
+            $data['warranty_expiration_date']
+                ?? null
         );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Asset Payload
-        |--------------------------------------------------------------------------
-        */
+        $hasTags = array_key_exists(
+            'tag_ids',
+            $data
+        );
+
+        $tagIds = $hasTags
+            ? $this
+                ->assetTagService
+                ->validateTagIds(
+                    $tenantId,
+                    $data['tag_ids']
+                )
+            : [];
 
         $payload = [
             'tenant_id' =>
@@ -373,17 +345,18 @@ class AssetService
                 $status,
 
             'owner_user_id' =>
-                null,
+                $ownerUserId,
 
             'assigned_user_id' =>
-                null,
+                $assignedUserId,
 
             'data_source' =>
-                Asset::DATA_SOURCE_MANUAL,
+                $dataSource,
 
             'warranty_provider' =>
                 $this->nullableString(
-                    $data['warranty_provider'] ?? null
+                    $data['warranty_provider']
+                    ?? null
                 ),
 
             'warranty_start_date' =>
@@ -399,7 +372,8 @@ class AssetService
 
             'notes' =>
                 $this->nullableString(
-                    $data['notes'] ?? null
+                    $data['notes']
+                    ?? null
                 ),
 
             'created_by' =>
@@ -415,7 +389,13 @@ class AssetService
                 $payload,
                 $layoutFields,
                 $fieldValues,
-                $actor
+                $hasTags,
+                $tagIds,
+                $actor,
+                $ipAddress,
+                $userAgent,
+                $requestMethod,
+                $requestPath
             ) {
                 $asset = $this
                     ->assetRepository
@@ -433,6 +413,17 @@ class AssetService
                         userId: (string) $actor->id
                     );
 
+                if ($hasTags) {
+                    $this
+                        ->assetTagService
+                        ->syncForAsset(
+                            tenantId: $tenantId,
+                            asset: $asset,
+                            tagIds: $tagIds,
+                            actor: $actor
+                        );
+                }
+
                 $createdAsset = $this
                     ->assetRepository
                     ->findByTenantAndId(
@@ -446,22 +437,120 @@ class AssetService
                     );
                 }
 
+                $changes = [
+                    'name' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->name,
+                    ],
+
+                    'company_id' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->company_id,
+                    ],
+
+                    'asset_layout_id' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->asset_layout_id,
+                    ],
+
+                    'status' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->status,
+                    ],
+
+                    'owner_user_id' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->owner_user_id,
+                    ],
+
+                    'assigned_user_id' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->assigned_user_id,
+                    ],
+
+                    'data_source' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->data_source,
+                    ],
+
+                    'lifecycle_status' => [
+                        'from' => null,
+                        'to' =>
+                            $createdAsset->lifecycle_status,
+                    ],
+                ];
+
+                if ($hasTags) {
+                    $changes['tag_ids'] = [
+                        'from' => [],
+                        'to' => $this
+                            ->assetTagIds(
+                                $createdAsset
+                            ),
+                    ];
+                }
+
+                $this
+                    ->auditEventService
+                    ->record(
+                        tenantId: $tenantId,
+                        actor: $actor,
+                        action: AuditEvent::ACTION_CREATED,
+                        category: AuditEvent::CATEGORY_RESOURCE,
+                        targetType: 'asset',
+                        targetId:
+                            (string) $createdAsset->id,
+                        targetLabel:
+                            $createdAsset->name,
+                        description:
+                            'Asset was created.',
+                        changes: $changes,
+                        metadata: [
+                            'asset_layout_version_id' =>
+                                $createdAsset
+                                    ->asset_layout_version_id,
+
+                            'warranty_provider' =>
+                                $createdAsset
+                                    ->warranty_provider,
+
+                            'warranty_start_date' =>
+                                $createdAsset
+                                    ->warranty_start_date
+                                    ?->format('Y-m-d'),
+
+                            'warranty_expiration_date' =>
+                                $createdAsset
+                                    ->warranty_expiration_date
+                                    ?->format('Y-m-d'),
+                        ],
+                        ipAddress: $ipAddress,
+                        userAgent: $userAgent,
+                        requestMethod: $requestMethod,
+                        requestPath: $requestPath
+                    );
+
                 return $createdAsset;
             }
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Update Asset
-    |--------------------------------------------------------------------------
-    */
-
     public function update(
         string $tenantId,
         string $assetId,
         array $data,
-        User $actor
+        User $actor,
+        ?string $ipAddress = null,
+        ?string $userAgent = null,
+        ?string $requestMethod = null,
+        ?string $requestPath = null
     ): Asset {
         $asset = $this
             ->assetRepository
@@ -484,12 +573,6 @@ class AssetService
                 $asset->company_id
             );
 
-        /*
-        |--------------------------------------------------------------------------
-        | Company Cannot Change
-        |--------------------------------------------------------------------------
-        */
-
         if (
             array_key_exists(
                 'company_id',
@@ -504,12 +587,6 @@ class AssetService
                 ],
             ]);
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Layout Cannot Change
-        |--------------------------------------------------------------------------
-        */
 
         if (
             array_key_exists(
@@ -526,13 +603,48 @@ class AssetService
             ]);
         }
 
-        $updateData = [];
+        $before = [
+            'name' =>
+                $asset->name,
 
-        /*
-        |--------------------------------------------------------------------------
-        | Name
-        |--------------------------------------------------------------------------
-        */
+            'status' =>
+                $asset->status,
+
+            'owner_user_id' =>
+                $asset->owner_user_id,
+
+            'assigned_user_id' =>
+                $asset->assigned_user_id,
+
+            'data_source' =>
+                $asset->data_source,
+
+            'lifecycle_status' =>
+                $asset->lifecycle_status,
+
+            'warranty_provider' =>
+                $asset->warranty_provider,
+
+            'warranty_start_date' =>
+                $asset
+                    ->warranty_start_date
+                    ?->format('Y-m-d'),
+
+            'warranty_expiration_date' =>
+                $asset
+                    ->warranty_expiration_date
+                    ?->format('Y-m-d'),
+
+            'notes' =>
+                $asset->notes,
+
+            'tag_ids' =>
+                $this->assetTagIds(
+                    $asset
+                ),
+        ];
+
+        $updateData = [];
 
         if (
             array_key_exists(
@@ -556,12 +668,6 @@ class AssetService
                 $name;
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Status
-        |--------------------------------------------------------------------------
-        */
-
         if (
             array_key_exists(
                 'status',
@@ -576,11 +682,47 @@ class AssetService
                 $data['status'];
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Lifecycle
-        |--------------------------------------------------------------------------
-        */
+        if (
+            array_key_exists(
+                'owner_user_id',
+                $data
+            )
+        ) {
+            $updateData['owner_user_id'] =
+                $this->validateTenantUser(
+                    $tenantId,
+                    $data['owner_user_id'],
+                    'owner_user_id'
+                );
+        }
+
+        if (
+            array_key_exists(
+                'assigned_user_id',
+                $data
+            )
+        ) {
+            $updateData['assigned_user_id'] =
+                $this->validateTenantUser(
+                    $tenantId,
+                    $data['assigned_user_id'],
+                    'assigned_user_id'
+                );
+        }
+
+        if (
+            array_key_exists(
+                'data_source',
+                $data
+            )
+        ) {
+            $this->validateDataSource(
+                $data['data_source']
+            );
+
+            $updateData['data_source'] =
+                $data['data_source'];
+        }
 
         if (
             array_key_exists(
@@ -596,12 +738,6 @@ class AssetService
                 $data['lifecycle_status'];
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Warranty Provider
-        |--------------------------------------------------------------------------
-        */
-
         if (
             array_key_exists(
                 'warranty_provider',
@@ -614,12 +750,6 @@ class AssetService
                 );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Notes
-        |--------------------------------------------------------------------------
-        */
-
         if (
             array_key_exists(
                 'notes',
@@ -631,12 +761,6 @@ class AssetService
                     $data['notes']
                 );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Warranty Dates
-        |--------------------------------------------------------------------------
-        */
 
         $warrantyStartDate =
             array_key_exists(
@@ -683,12 +807,6 @@ class AssetService
                 $data['warranty_expiration_date'];
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Dynamic Fields
-        |--------------------------------------------------------------------------
-        */
-
         $hasDynamicFields =
             array_key_exists(
                 'fields',
@@ -721,6 +839,20 @@ class AssetService
                     )
                 : null;
 
+        $hasTags = array_key_exists(
+            'tag_ids',
+            $data
+        );
+
+        $tagIds = $hasTags
+            ? $this
+                ->assetTagService
+                ->validateTagIds(
+                    $tenantId,
+                    $data['tag_ids']
+                )
+            : [];
+
         $updateData['updated_by'] =
             $actor->id;
 
@@ -728,20 +860,25 @@ class AssetService
             function () use (
                 $tenantId,
                 $asset,
+                $before,
                 $updateData,
                 $hasDynamicFields,
                 $layoutFields,
                 $fieldValues,
-                $actor
+                $hasTags,
+                $tagIds,
+                $actor,
+                $ipAddress,
+                $userAgent,
+                $requestMethod,
+                $requestPath
             ) {
-                if (!empty($updateData)) {
-                    $asset = $this
-                        ->assetRepository
-                        ->update(
-                            $asset,
-                            $updateData
-                        );
-                }
+                $asset = $this
+                    ->assetRepository
+                    ->update(
+                        $asset,
+                        $updateData
+                    );
 
                 if (
                     $hasDynamicFields &&
@@ -758,6 +895,17 @@ class AssetService
                         );
                 }
 
+                if ($hasTags) {
+                    $this
+                        ->assetTagService
+                        ->syncForAsset(
+                            tenantId: $tenantId,
+                            asset: $asset,
+                            tagIds: $tagIds,
+                            actor: $actor
+                        );
+                }
+
                 $updatedAsset = $this
                     ->assetRepository
                     ->findByTenantAndId(
@@ -771,16 +919,123 @@ class AssetService
                     );
                 }
 
+                $after = [
+                    'name' =>
+                        $updatedAsset->name,
+
+                    'status' =>
+                        $updatedAsset->status,
+
+                    'owner_user_id' =>
+                        $updatedAsset
+                            ->owner_user_id,
+
+                    'assigned_user_id' =>
+                        $updatedAsset
+                            ->assigned_user_id,
+
+                    'data_source' =>
+                        $updatedAsset
+                            ->data_source,
+
+                    'lifecycle_status' =>
+                        $updatedAsset
+                            ->lifecycle_status,
+
+                    'warranty_provider' =>
+                        $updatedAsset
+                            ->warranty_provider,
+
+                    'warranty_start_date' =>
+                        $updatedAsset
+                            ->warranty_start_date
+                            ?->format('Y-m-d'),
+
+                    'warranty_expiration_date' =>
+                        $updatedAsset
+                            ->warranty_expiration_date
+                            ?->format('Y-m-d'),
+
+                    'notes' =>
+                        $updatedAsset->notes,
+
+                    'tag_ids' =>
+                        $this->assetTagIds(
+                            $updatedAsset
+                        ),
+                ];
+
+                $changes = [];
+
+                foreach (
+                    $before
+                    as $field => $oldValue
+                ) {
+                    $newValue =
+                        $after[$field]
+                        ?? null;
+
+                    if ($oldValue !== $newValue) {
+                        $changes[$field] = [
+                            'from' =>
+                                $oldValue,
+
+                            'to' =>
+                                $newValue,
+                        ];
+                    }
+                }
+
+                if (
+                    !empty($changes) ||
+                    $hasDynamicFields
+                ) {
+                    $this
+                        ->auditEventService
+                        ->record(
+                            tenantId: $tenantId,
+                            actor: $actor,
+                            action: AuditEvent::ACTION_UPDATED,
+                            category: AuditEvent::CATEGORY_RESOURCE,
+                            targetType: 'asset',
+                            targetId:
+                                (string) $updatedAsset->id,
+                            targetLabel:
+                                $updatedAsset->name,
+                            description:
+                                'Asset was updated.',
+                            changes:
+                                !empty($changes)
+                                    ? $changes
+                                    : null,
+                            metadata: [
+                                'company_id' =>
+                                    $updatedAsset->company_id,
+
+                                'asset_layout_id' =>
+                                    $updatedAsset->asset_layout_id,
+
+                                'asset_layout_version_id' =>
+                                    $updatedAsset
+                                        ->asset_layout_version_id,
+
+                                'dynamic_fields_updated' =>
+                                    $hasDynamicFields,
+
+                                'tags_updated' =>
+                                    $hasTags,
+                            ],
+                            ipAddress: $ipAddress,
+                            userAgent: $userAgent,
+                            requestMethod: $requestMethod,
+                            requestPath: $requestPath
+                        );
+                }
+
                 return $updatedAsset;
             }
         );
     }
-
-    /*
-    |--------------------------------------------------------------------------
-    | Archive Asset
-    |--------------------------------------------------------------------------
-    */
 
     public function archive(
         string $tenantId,
@@ -841,8 +1096,10 @@ class AssetService
                     ->registerArchivedResource(
                         tenantId: $tenantId,
                         resourceType: 'asset',
-                        resourceId: (string) $asset->id,
-                        resourceLabel: $asset->name,
+                        resourceId:
+                            (string) $asset->id,
+                        resourceLabel:
+                            $asset->name,
                         actor: $actor,
                         reason: $reason,
                         metadata: [
@@ -856,10 +1113,17 @@ class AssetService
                                 $asset->asset_layout_id,
 
                             'asset_layout_version_id' =>
-                                $asset->asset_layout_version_id,
+                                $asset
+                                    ->asset_layout_version_id,
 
                             'status' =>
                                 $asset->status,
+
+                            'owner_user_id' =>
+                                $asset->owner_user_id,
+
+                            'assigned_user_id' =>
+                                $asset->assigned_user_id,
 
                             'data_source' =>
                                 $asset->data_source,
@@ -867,8 +1131,14 @@ class AssetService
                             'lifecycle_status' =>
                                 $asset->lifecycle_status,
 
+                            'tag_ids' =>
+                                $this->assetTagIds(
+                                    $asset
+                                ),
+
                             'warranty_provider' =>
-                                $asset->warranty_provider,
+                                $asset
+                                    ->warranty_provider,
 
                             'warranty_start_date' =>
                                 $asset
@@ -897,12 +1167,6 @@ class AssetService
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Restore Asset
-    |--------------------------------------------------------------------------
-    */
-
     public function restore(
         string $tenantId,
         string $assetId,
@@ -912,12 +1176,6 @@ class AssetService
         ?string $requestMethod = null,
         ?string $requestPath = null
     ): Asset {
-        /*
-        |--------------------------------------------------------------------------
-        | Find Asset Including Archived
-        |--------------------------------------------------------------------------
-        */
-
         $asset = $this
             ->assetRepository
             ->findByTenantAndIdWithTrashed(
@@ -931,23 +1189,11 @@ class AssetService
             );
         }
 
-        /*
-        |--------------------------------------------------------------------------
-        | Must Actually Be Archived
-        |--------------------------------------------------------------------------
-        */
-
         if (!$asset->trashed()) {
             throw new DomainException(
                 'Asset is not archived.'
             );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Manage Access Required
-        |--------------------------------------------------------------------------
-        */
 
         $this
             ->companyAccessService
@@ -956,12 +1202,6 @@ class AssetService
                 $actor,
                 $asset->company_id
             );
-
-        /*
-        |--------------------------------------------------------------------------
-        | Find Archive Registry Entry
-        |--------------------------------------------------------------------------
-        */
 
         $archiveEntry = $this
             ->archiveService
@@ -976,12 +1216,6 @@ class AssetService
                 'Asset archive record not found.'
             );
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Restore Asset + Archive Registry
-        |--------------------------------------------------------------------------
-        */
 
         return DB::transaction(
             function () use (
@@ -1011,7 +1245,8 @@ class AssetService
                     ->archiveService
                     ->markRestored(
                         tenantId: $tenantId,
-                        archiveEntryId: $archiveEntry->id,
+                        archiveEntryId:
+                            $archiveEntry->id,
                         actor: $actor,
                         ipAddress: $ipAddress,
                         userAgent: $userAgent,
@@ -1037,22 +1272,13 @@ class AssetService
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validate Asset Status
-    |--------------------------------------------------------------------------
-    */
-
     private function validateStatus(
         mixed $status
     ): void {
         if (
             !in_array(
                 $status,
-                [
-                    Asset::STATUS_ACTIVE,
-                    Asset::STATUS_INACTIVE,
-                ],
+                Asset::statuses(),
                 true
             )
         ) {
@@ -1064,26 +1290,13 @@ class AssetService
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validate Lifecycle Status
-    |--------------------------------------------------------------------------
-    */
-
     private function validateLifecycleStatus(
         mixed $status
     ): void {
         if (
             !in_array(
                 $status,
-                [
-                    Asset::LIFECYCLE_ACTIVE,
-                    Asset::LIFECYCLE_IN_STOCK,
-                    Asset::LIFECYCLE_ASSIGNED,
-                    Asset::LIFECYCLE_MAINTENANCE,
-                    Asset::LIFECYCLE_RETIRED,
-                    Asset::LIFECYCLE_DECOMMISSIONED,
-                ],
+                Asset::lifecycleStatuses(),
                 true
             )
         ) {
@@ -1095,11 +1308,75 @@ class AssetService
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validate Warranty Dates
-    |--------------------------------------------------------------------------
-    */
+    private function validateDataSource(
+        mixed $dataSource
+    ): void {
+        if (
+            !in_array(
+                $dataSource,
+                Asset::dataSources(),
+                true
+            )
+        ) {
+            throw ValidationException::withMessages([
+                'data_source' => [
+                    'The selected asset data source is invalid.',
+                ],
+            ]);
+        }
+    }
+
+    private function validateTenantUser(
+        string $tenantId,
+        mixed $userId,
+        string $field
+    ): ?string {
+        if (
+            $userId === null ||
+            $userId === ''
+        ) {
+            return null;
+        }
+
+        if (
+            is_array($userId) ||
+            is_object($userId)
+        ) {
+            throw ValidationException::withMessages([
+                $field => [
+                    'The selected user is invalid.',
+                ],
+            ]);
+        }
+
+        $userId = trim(
+            (string) $userId
+        );
+
+        if ($userId === '') {
+            return null;
+        }
+
+        $membership = $this
+            ->tenantUserRepository
+            ->findByTenantAndUser(
+                $tenantId,
+                $userId
+            );
+
+        if (
+            !$membership ||
+            !$membership->isActive()
+        ) {
+            throw ValidationException::withMessages([
+                $field => [
+                    'The selected user does not have active access to this tenant.',
+                ],
+            ]);
+        }
+
+        return $userId;
+    }
 
     private function validateWarrantyDates(
         mixed $startDate,
@@ -1146,12 +1423,6 @@ class AssetService
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Validate YYYY-MM-DD
-    |--------------------------------------------------------------------------
-    */
-
     private function validateDateFormat(
         string $field,
         mixed $value
@@ -1171,10 +1442,11 @@ class AssetService
             (string) $value
         );
 
-        $date = \DateTimeImmutable::createFromFormat(
-            '!Y-m-d',
-            $value
-        );
+        $date =
+            \DateTimeImmutable::createFromFormat(
+                '!Y-m-d',
+                $value
+            );
 
         $errors =
             \DateTimeImmutable::getLastErrors();
@@ -1198,12 +1470,6 @@ class AssetService
         }
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Nullable String
-    |--------------------------------------------------------------------------
-    */
-
     private function nullableString(
         mixed $value
     ): ?string {
@@ -1225,5 +1491,26 @@ class AssetService
         return $value !== ''
             ? $value
             : null;
+    }
+
+    private function assetTagIds(
+        Asset $asset
+    ): array {
+        if (!$asset->relationLoaded('tags')) {
+            $asset->load(
+                'tags:id,name,slug'
+            );
+        }
+
+        return $asset
+            ->tags
+            ->pluck('id')
+            ->map(
+                fn ($id) =>
+                    (string) $id
+            )
+            ->sort()
+            ->values()
+            ->all();
     }
 }

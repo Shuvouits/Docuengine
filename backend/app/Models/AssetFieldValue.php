@@ -11,21 +11,8 @@ class AssetFieldValue extends Model
 {
     use HasUuids;
 
-    /*
-    |--------------------------------------------------------------------------
-    | Data Source Constants
-    |--------------------------------------------------------------------------
-    */
-
     public const DATA_SOURCE_MANUAL = 'manual';
-
     public const DATA_SOURCE_INTEGRATION = 'integration';
-
-    /*
-    |--------------------------------------------------------------------------
-    | Fillable Fields
-    |--------------------------------------------------------------------------
-    */
 
     protected $fillable = [
         'tenant_id',
@@ -45,12 +32,6 @@ class AssetFieldValue extends Model
         'updated_by',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Casts
-    |--------------------------------------------------------------------------
-    */
-
     protected function casts(): array
     {
         return [
@@ -63,11 +44,13 @@ class AssetFieldValue extends Model
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Relationships
-    |--------------------------------------------------------------------------
-    */
+    public static function dataSources(): array
+    {
+        return [
+            self::DATA_SOURCE_MANUAL,
+            self::DATA_SOURCE_INTEGRATION,
+        ];
+    }
 
     public function asset(): BelongsTo
     {
@@ -101,12 +84,6 @@ class AssetFieldValue extends Model
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Scopes
-    |--------------------------------------------------------------------------
-    */
-
     public function scopeForTenant(
         Builder $query,
         string $tenantId
@@ -137,6 +114,16 @@ class AssetFieldValue extends Model
         );
     }
 
+    public function scopeForFieldKey(
+        Builder $query,
+        string $fieldKey
+    ): Builder {
+        return $query->where(
+            'field_key',
+            $fieldKey
+        );
+    }
+
     public function scopeManual(
         Builder $query
     ): Builder {
@@ -155,12 +142,6 @@ class AssetFieldValue extends Model
         );
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Helpers
-    |--------------------------------------------------------------------------
-    */
-
     public function isManual(): bool
     {
         return $this->data_source ===
@@ -171,5 +152,33 @@ class AssetFieldValue extends Model
     {
         return $this->data_source ===
             self::DATA_SOURCE_INTEGRATION;
+    }
+
+    public function isIntegrationMaintained(): bool
+    {
+        return $this->isIntegrationSourced();
+    }
+
+    public function resolvedValue(): mixed
+    {
+        return match ($this->field_type) {
+            'number' =>
+                $this->value_number,
+
+            'date' =>
+                $this->value_datetime
+                    ?->format('Y-m-d'),
+
+            'checkbox' =>
+                $this->value_boolean,
+
+            'multi_select',
+            'file',
+            'relationship' =>
+                $this->value_json,
+
+            default =>
+                $this->value_text,
+        };
     }
 }
